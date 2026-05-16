@@ -15,6 +15,7 @@ const links = [
         group: "Overview", items: [
             { href: "/", icon: LayoutDashboard, label: "Dashboard" },
             { href: "/clusters", icon: Server, label: "Clusters" },
+            { href: "/nodes", icon: Server, label: "Nodes" },
             { href: "/pods", icon: Box, label: "Pods" },
             { href: "/topology", icon: Network, label: "Topology" },
             { href: "/autoscaling", icon: Scaling, label: "Autoscaling" },
