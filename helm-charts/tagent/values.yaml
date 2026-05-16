@@ -1,37 +1,81 @@
-# Default values for Tagent.
-# Override per-environment with values-development.yaml or values-production.yaml.
+# Tagent Helm Chart — Default Values
+# Override with values-development.yaml or values-production.yaml
 
 createNamespace: false
 
-# ----- Frontend Web -----
-web:
-  replicaCount: 1
-  image:
-    repository: ghcr.io/tagent-ai/web
-    tag: "" # defaults to Chart.appVersion
-    pullPolicy: IfNotPresent
-  apiUrl: "http://tagent-api-gateway"
-  service:
-    type: ClusterIP
-  resources:
-    requests:
-      cpu: 50m
-      memory: 128Mi
-    limits:
-      cpu: 500m
-      memory: 512Mi
+# ===== SERVICES =====
 
-# ----- Backend services (placeholders, built later) -----
 apiGateway:
-  enabled: false
+  replicaCount: 1
   image:
     repository: ghcr.io/tagent-ai/api-gateway
     tag: ""
     pullPolicy: IfNotPresent
-  port: 8080
+  resources:
+    requests: { cpu: 100m, memory: 128Mi }
+    limits: { cpu: 500m, memory: 256Mi }
 
-# ----- Local LLM runtime (HARD REQUIREMENT — no cloud APIs) -----
-# See doc/AI_REQUIREMENTS.md
+discovery:
+  image:
+    repository: ghcr.io/tagent-ai/discovery
+    tag: ""
+    pullPolicy: IfNotPresent
+  resources:
+    requests: { cpu: 100m, memory: 128Mi }
+    limits: { cpu: 500m, memory: 256Mi }
+
+monitoring:
+  image:
+    repository: ghcr.io/tagent-ai/monitoring
+    tag: ""
+    pullPolicy: IfNotPresent
+  resources:
+    requests: { cpu: 100m, memory: 128Mi }
+    limits: { cpu: 500m, memory: 256Mi }
+
+aiEngine:
+  image:
+    repository: ghcr.io/tagent-ai/ai-engine
+    tag: ""
+    pullPolicy: IfNotPresent
+  resources:
+    requests: { cpu: 200m, memory: 256Mi }
+    limits: { cpu: 1000m, memory: 512Mi }
+
+remediation:
+  image:
+    repository: ghcr.io/tagent-ai/remediation
+    tag: ""
+    pullPolicy: IfNotPresent
+  mode: "read-only" # read-only | approval-required | auto
+  resources:
+    requests: { cpu: 100m, memory: 128Mi }
+    limits: { cpu: 500m, memory: 256Mi }
+
+notification:
+  image:
+    repository: ghcr.io/tagent-ai/notification
+    tag: ""
+    pullPolicy: IfNotPresent
+  resources:
+    requests: { cpu: 50m, memory: 64Mi }
+    limits: { cpu: 200m, memory: 128Mi }
+
+web:
+  replicaCount: 1
+  image:
+    repository: ghcr.io/tagent-ai/web
+    tag: ""
+    pullPolicy: IfNotPresent
+  apiUrl: "http://tagent-api-gateway:8080"
+  service:
+    type: ClusterIP
+  resources:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits: { cpu: 500m, memory: 512Mi }
+
+# ===== LOCAL LLM (no cloud APIs) =====
+
 ollama:
   enabled: true
   image:
@@ -45,14 +89,35 @@ ollama:
     size: 20Gi
     storageClass: ""
   resources:
-    requests:
-      cpu: "1"
-      memory: 6Gi
-    limits:
-      cpu: "4"
-      memory: 12Gi
+    requests: { cpu: "1", memory: 6Gi }
+    limits: { cpu: "4", memory: 12Gi }
 
-# ----- Ingress (set true for EKS with ALB or NGINX) -----
+# ===== NIGHT GUARDIAN =====
+
+nightGuardian:
+  enabled: false
+  confidence: "85"
+
+# ===== ESCALATION =====
+
+escalation:
+  phoneDelayMin: "3"
+  autoFixDelayMin: "10"
+  quietStart: "22:00"
+  quietEnd: "06:00"
+
+# ===== SECRETS (override in your own values file) =====
+
+secrets:
+  databaseUrl: ""
+  redisUrl: ""
+  slackWebhookUrl: ""
+  smtpHost: ""
+  smtpUser: ""
+  smtpPassword: ""
+
+# ===== INGRESS =====
+
 ingress:
   enabled: false
   className: ""
@@ -64,7 +129,7 @@ ingress:
           pathType: Prefix
   tls: []
 
-# ----- RBAC -----
+# ===== RBAC =====
+
 rbac:
   create: true
-  readOnly: true

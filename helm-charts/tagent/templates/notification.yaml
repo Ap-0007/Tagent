@@ -1,0 +1,78 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-notification
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "tagent.labels" . | nindent 4 }}
+    app.kubernetes.io/component: notification
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "tagent.selectorLabels" (dict "Release" .Release "component" "notification") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "tagent.selectorLabels" (dict "Release" .Release "component" "notification") | nindent 8 }}
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+      containers:
+      - name: notification
+        image: "{{ .Values.notification.image.repository }}:{{ .Values.notification.image.tag | default .Chart.AppVersion }}"
+        imagePullPolicy: {{ .Values.notification.image.pullPolicy }}
+        ports:
+        - name: http
+          containerPort: 8085
+        env:
+        - name: PORT
+          value: "8085"
+        - name: KAFKA_BROKERS
+          value: "{{ .Release.Name }}-kafka:9092"
+        - name: SLACK_WEBHOOK_URL
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Release.Name }}-secrets
+              key: slack-webhook-url
+              optional: true
+        - name: SMTP_HOST
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Release.Name }}-secrets
+              key: smtp-host
+              optional: true
+        - name: SMTP_USER
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Release.Name }}-secrets
+              key: smtp-user
+              optional: true
+        - name: SMTP_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Release.Name }}-secrets
+              key: smtp-password
+              optional: true
+        resources:
+          {{- toYaml .Values.notification.resources | nindent 12 }}
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop: ["ALL"]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-notification
+  namespace: {{ .Release.Namespace }}
+spec:
+  type: ClusterIP
+  ports:
+  - name: http
+    port: 8085
+    targetPort: 8085
+  selector:
+    {{- include "tagent.selectorLabels" (dict "Release" .Release "component" "notification") | nindent 4 }}

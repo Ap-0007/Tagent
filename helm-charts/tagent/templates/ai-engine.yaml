@@ -1,0 +1,79 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-ai-engine
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "tagent.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ai-engine
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "tagent.selectorLabels" (dict "Release" .Release "component" "ai-engine") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "tagent.selectorLabels" (dict "Release" .Release "component" "ai-engine") | nindent 8 }}
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+      containers:
+      - name: ai-engine
+        image: "{{ .Values.aiEngine.image.repository }}:{{ .Values.aiEngine.image.tag | default .Chart.AppVersion }}"
+        imagePullPolicy: {{ .Values.aiEngine.image.pullPolicy }}
+        ports:
+        - name: http
+          containerPort: 8083
+        env:
+        - name: PORT
+          value: "8083"
+        - name: OLLAMA_ENDPOINT
+          value: "http://{{ .Release.Name }}-ollama:11434"
+        - name: OLLAMA_MODEL
+          value: {{ .Values.ollama.model | quote }}
+        - name: OLLAMA_EMBEDDING_MODEL
+          value: {{ .Values.ollama.embeddingModel | quote }}
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Release.Name }}-secrets
+              key: database-url
+        - name: REDIS_URL
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Release.Name }}-secrets
+              key: redis-url
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 15
+          periodSeconds: 20
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        resources:
+          {{- toYaml .Values.aiEngine.resources | nindent 12 }}
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop: ["ALL"]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-ai-engine
+  namespace: {{ .Release.Namespace }}
+spec:
+  type: ClusterIP
+  ports:
+  - name: http
+    port: 8083
+    targetPort: 8083
+  selector:
+    {{- include "tagent.selectorLabels" (dict "Release" .Release "component" "ai-engine") | nindent 4 }}

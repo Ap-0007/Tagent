@@ -1,0 +1,62 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-monitoring
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "tagent.labels" . | nindent 4 }}
+    app.kubernetes.io/component: monitoring
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "tagent.selectorLabels" (dict "Release" .Release "component" "monitoring") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "tagent.selectorLabels" (dict "Release" .Release "component" "monitoring") | nindent 8 }}
+    spec:
+      serviceAccountName: {{ .Release.Name }}-monitoring
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+      containers:
+      - name: monitoring
+        image: "{{ .Values.monitoring.image.repository }}:{{ .Values.monitoring.image.tag | default .Chart.AppVersion }}"
+        imagePullPolicy: {{ .Values.monitoring.image.pullPolicy }}
+        ports:
+        - name: http
+          containerPort: 8082
+        env:
+        - name: PORT
+          value: "8082"
+        - name: PROMETHEUS_URL
+          value: "http://prometheus-server.monitoring:9090"
+        - name: KAFKA_BROKERS
+          value: "{{ .Release.Name }}-kafka:9092"
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Release.Name }}-secrets
+              key: database-url
+        resources:
+          {{- toYaml .Values.monitoring.resources | nindent 12 }}
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop: ["ALL"]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-monitoring
+  namespace: {{ .Release.Namespace }}
+spec:
+  type: ClusterIP
+  ports:
+  - name: http
+    port: 8082
+    targetPort: 8082
+  selector:
+    {{- include "tagent.selectorLabels" (dict "Release" .Release "component" "monitoring") | nindent 4 }}

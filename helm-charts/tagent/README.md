@@ -4,13 +4,12 @@ AI-powered Kubernetes Incident Intelligence & Auto-Remediation platform.
 
 ## Install from the Helm Repository
 
-> Replace `YOUR-GH-USER` with your GitHub username/org once the chart is published.
-> The chart repo URL is `https://YOUR-GH-USER.github.io/Tagent` (whatever the repo is named).
+> The chart repo URL is `https://tagent-dev.github.io/Tagent`.
 
 ### 1. Add the Helm repo
 
 ```bash
-helm repo add tagent https://YOUR-GH-USER.github.io/Tagent
+helm repo add tagent https://tagent-dev.github.io/Tagent
 helm repo update
 ```
 
@@ -22,7 +21,7 @@ helm repo update
 helm install tagent tagent/tagent \
   --namespace tagent \
   --create-namespace \
-  -f https://raw.githubusercontent.com/YOUR-GH-USER/Tagent/main/helm-charts/tagent/values-development.yaml
+  -f https://raw.githubusercontent.com/Tagent-dev/Tagent/main/helm-charts/tagent/values-development.yaml
 ```
 
 **EKS (production):**
@@ -31,7 +30,7 @@ helm install tagent tagent/tagent \
 helm install tagent tagent/tagent \
   --namespace tagent \
   --create-namespace \
-  -f https://raw.githubusercontent.com/YOUR-GH-USER/Tagent/main/helm-charts/tagent/values-production.yaml \
+  -f https://raw.githubusercontent.com/Tagent-dev/Tagent/main/helm-charts/tagent/values-production.yaml \
   --set ingress.hosts[0].host=tagent.yourdomain.com
 ```
 

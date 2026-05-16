@@ -1,0 +1,62 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-remediation
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "tagent.labels" . | nindent 4 }}
+    app.kubernetes.io/component: remediation
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "tagent.selectorLabels" (dict "Release" .Release "component" "remediation") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "tagent.selectorLabels" (dict "Release" .Release "component" "remediation") | nindent 8 }}
+    spec:
+      serviceAccountName: {{ .Release.Name }}-remediation
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+      containers:
+      - name: remediation
+        image: "{{ .Values.remediation.image.repository }}:{{ .Values.remediation.image.tag | default .Chart.AppVersion }}"
+        imagePullPolicy: {{ .Values.remediation.image.pullPolicy }}
+        ports:
+        - name: http
+          containerPort: 8084
+        env:
+        - name: PORT
+          value: "8084"
+        - name: REMEDIATION_MODE
+          value: {{ .Values.remediation.mode | default "read-only" | quote }}
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Release.Name }}-secrets
+              key: database-url
+        - name: KAFKA_BROKERS
+          value: "{{ .Release.Name }}-kafka:9092"
+        resources:
+          {{- toYaml .Values.remediation.resources | nindent 12 }}
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop: ["ALL"]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-remediation
+  namespace: {{ .Release.Namespace }}
+spec:
+  type: ClusterIP
+  ports:
+  - name: http
+    port: 8084
+    targetPort: 8084
+  selector:
+    {{- include "tagent.selectorLabels" (dict "Release" .Release "component" "remediation") | nindent 4 }}

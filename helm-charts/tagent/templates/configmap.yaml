@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "tagent.labels" . | nindent 4 }}
+data:
+  REMEDIATION_MODE: {{ .Values.remediation.mode | default "read-only" | quote }}
+  OLLAMA_MODEL: {{ .Values.ollama.model | quote }}
+  OLLAMA_EMBEDDING_MODEL: {{ .Values.ollama.embeddingModel | quote }}
+  NIGHT_GUARDIAN_ENABLED: {{ .Values.nightGuardian.enabled | default "false" | quote }}
+  NIGHT_GUARDIAN_CONFIDENCE: {{ .Values.nightGuardian.confidence | default "85" | quote }}
+  ESCALATION_PHONE_DELAY_MIN: {{ .Values.escalation.phoneDelayMin | default "3" | quote }}
+  ESCALATION_AUTOFIX_DELAY_MIN: {{ .Values.escalation.autoFixDelayMin | default "10" | quote }}
+  QUIET_HOURS_START: {{ .Values.escalation.quietStart | default "22:00" | quote }}
+  QUIET_HOURS_END: {{ .Values.escalation.quietEnd | default "06:00" | quote }}
