@@ -1,7 +1,7 @@
 FROM golang:1.21-alpine AS builder
 WORKDIR /app
 COPY backend/services/remediation/ .
-RUN go mod download
+RUN go mod tidy
 RUN CGO_ENABLED=0 go build -o /tagent-remediation ./cmd/server
 
 FROM alpine:3.19
