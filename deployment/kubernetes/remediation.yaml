@@ -1,0 +1,59 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tagent-remediation
+  namespace: tagent
+  labels:
+    app: tagent-remediation
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: tagent-remediation
+  template:
+    metadata:
+      labels:
+        app: tagent-remediation
+    spec:
+      serviceAccountName: tagent-remediation
+      containers:
+        - name: remediation
+          image: ghcr.io/tagent-dev/remediation:latest
+          ports:
+            - containerPort: 8084
+              name: http
+          env:
+            - name: PORT
+              value: "8084"
+            - name: REMEDIATION_MODE
+              valueFrom:
+                configMapKeyRef:
+                  name: tagent-config
+                  key: REMEDIATION_MODE
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8084
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tagent-remediation
+  namespace: tagent
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8084
+      targetPort: 8084
+      name: http
+  selector:
+    app: tagent-remediation

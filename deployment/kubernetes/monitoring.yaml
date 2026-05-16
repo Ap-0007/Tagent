@@ -1,0 +1,59 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tagent-monitoring
+  namespace: tagent
+  labels:
+    app: tagent-monitoring
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: tagent-monitoring
+  template:
+    metadata:
+      labels:
+        app: tagent-monitoring
+    spec:
+      serviceAccountName: tagent-monitoring
+      containers:
+        - name: monitoring
+          image: ghcr.io/tagent-dev/monitoring:latest
+          ports:
+            - containerPort: 8082
+              name: http
+          env:
+            - name: PORT
+              value: "8082"
+            - name: PROMETHEUS_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: tagent-config
+                  key: PROMETHEUS_URL
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8082
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tagent-monitoring
+  namespace: tagent
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8082
+      targetPort: 8082
+      name: http
+  selector:
+    app: tagent-monitoring

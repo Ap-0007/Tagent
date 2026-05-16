@@ -1,5 +1,5 @@
 # Tagent Helm Chart — Default Values
-# Override with values-development.yaml or values-production.yaml
+# One command: helm install tagent tagent/tagent --namespace tagent --create-namespace
 
 createNamespace: false
 
@@ -8,55 +8,55 @@ createNamespace: false
 apiGateway:
   replicaCount: 1
   image:
-    repository: ghcr.io/tagent-ai/api-gateway
-    tag: ""
-    pullPolicy: IfNotPresent
+    repository: ghcr.io/tagent-dev/api-gateway
+    tag: "latest"
+    pullPolicy: Always
   resources:
     requests: { cpu: 100m, memory: 128Mi }
     limits: { cpu: 500m, memory: 256Mi }
 
 discovery:
   image:
-    repository: ghcr.io/tagent-ai/discovery
-    tag: ""
-    pullPolicy: IfNotPresent
+    repository: ghcr.io/tagent-dev/discovery
+    tag: "latest"
+    pullPolicy: Always
   resources:
     requests: { cpu: 100m, memory: 128Mi }
     limits: { cpu: 500m, memory: 256Mi }
 
 monitoring:
   image:
-    repository: ghcr.io/tagent-ai/monitoring
-    tag: ""
-    pullPolicy: IfNotPresent
+    repository: ghcr.io/tagent-dev/monitoring
+    tag: "latest"
+    pullPolicy: Always
   resources:
     requests: { cpu: 100m, memory: 128Mi }
     limits: { cpu: 500m, memory: 256Mi }
 
 aiEngine:
   image:
-    repository: ghcr.io/tagent-ai/ai-engine
-    tag: ""
-    pullPolicy: IfNotPresent
+    repository: ghcr.io/tagent-dev/ai-engine
+    tag: "latest"
+    pullPolicy: Always
   resources:
     requests: { cpu: 200m, memory: 256Mi }
     limits: { cpu: 1000m, memory: 512Mi }
 
 remediation:
   image:
-    repository: ghcr.io/tagent-ai/remediation
-    tag: ""
-    pullPolicy: IfNotPresent
-  mode: "read-only" # read-only | approval-required | auto
+    repository: ghcr.io/tagent-dev/remediation
+    tag: "latest"
+    pullPolicy: Always
+  mode: "read-only"
   resources:
     requests: { cpu: 100m, memory: 128Mi }
     limits: { cpu: 500m, memory: 256Mi }
 
 notification:
   image:
-    repository: ghcr.io/tagent-ai/notification
-    tag: ""
-    pullPolicy: IfNotPresent
+    repository: ghcr.io/tagent-dev/notification
+    tag: "latest"
+    pullPolicy: Always
   resources:
     requests: { cpu: 50m, memory: 64Mi }
     limits: { cpu: 200m, memory: 128Mi }
@@ -64,9 +64,9 @@ notification:
 web:
   replicaCount: 1
   image:
-    repository: ghcr.io/tagent-ai/web
-    tag: ""
-    pullPolicy: IfNotPresent
+    repository: ghcr.io/tagent-dev/web
+    tag: "latest"
+    pullPolicy: Always
   apiUrl: "http://tagent-api-gateway:8080"
   service:
     type: ClusterIP
@@ -106,7 +106,7 @@ escalation:
   quietStart: "22:00"
   quietEnd: "06:00"
 
-# ===== SECRETS (override in your own values file) =====
+# ===== SECRETS =====
 
 secrets:
   databaseUrl: ""

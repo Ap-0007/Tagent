@@ -1,4 +1,9 @@
-"""Tagent AI Engine — FastAPI service for incident intelligence."""
+"""Tagent AI Engine — local LLM-powered cluster intelligence.
+
+Answers questions about your Kubernetes cluster using:
+1. Real cluster data (fetched from Discovery/Monitoring services)
+2. Local Ollama LLM (llama3.1:8b) — no cloud APIs, no data leaves your cluster
+"""
 
 import os
 from fastapi import FastAPI
@@ -7,10 +12,11 @@ from app.routers import chat, analysis, rca
 
 app = FastAPI(
     title="Tagent AI Engine",
-    description="AI-powered incident intelligence and root cause analysis",
+    description="Local LLM-powered Kubernetes incident intelligence",
     version="0.1.0",
 )
 
+# Allow frontend to call the AI Engine directly during development
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -21,7 +27,16 @@ app.add_middleware(
 
 @app.get("/health")
 async def health():
-    return {"status": "healthy", "service": "tagent-ai-engine", "version": "0.1.0"}
+    from app.providers import OllamaProvider
+    provider = OllamaProvider()
+    ollama_ok = await provider.health()
+    return {
+        "status": "healthy" if ollama_ok else "degraded",
+        "service": "tagent-ai-engine",
+        "version": "0.1.0",
+        "ollama": "connected" if ollama_ok else "unreachable",
+        "model": os.getenv("OLLAMA_MODEL", "llama3.1:8b"),
+    }
 
 
 app.include_router(chat.router, prefix="/api/v1/ai", tags=["chat"])
@@ -31,6 +46,5 @@ app.include_router(rca.router, prefix="/api/v1/ai", tags=["rca"])
 
 if __name__ == "__main__":
     import uvicorn
-
     port = int(os.getenv("PORT", "8083"))
     uvicorn.run(app, host="0.0.0.0", port=port)

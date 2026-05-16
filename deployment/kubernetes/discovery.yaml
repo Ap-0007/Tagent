@@ -1,0 +1,54 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tagent-discovery
+  namespace: tagent
+  labels:
+    app: tagent-discovery
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: tagent-discovery
+  template:
+    metadata:
+      labels:
+        app: tagent-discovery
+    spec:
+      serviceAccountName: tagent-discovery
+      containers:
+        - name: discovery
+          image: ghcr.io/tagent-dev/discovery:latest
+          ports:
+            - containerPort: 8081
+              name: http
+          env:
+            - name: PORT
+              value: "8081"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8081
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tagent-discovery
+  namespace: tagent
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8081
+      targetPort: 8081
+      name: http
+  selector:
+    app: tagent-discovery

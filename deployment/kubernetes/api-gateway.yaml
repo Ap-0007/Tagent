@@ -1,0 +1,68 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tagent-api-gateway
+  namespace: tagent
+  labels:
+    app: tagent-api-gateway
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: tagent-api-gateway
+  template:
+    metadata:
+      labels:
+        app: tagent-api-gateway
+    spec:
+      serviceAccountName: tagent-api-gateway
+      containers:
+        - name: api-gateway
+          image: ghcr.io/tagent-dev/api-gateway:latest
+          ports:
+            - containerPort: 8080
+              name: http
+          env:
+            - name: PORT
+              value: "8080"
+            - name: DISCOVERY_URL
+              value: "http://tagent-discovery:8081"
+            - name: MONITORING_URL
+              value: "http://tagent-monitoring:8082"
+            - name: AI_ENGINE_URL
+              value: "http://tagent-ai-engine:8083"
+            - name: REMEDIATION_URL
+              value: "http://tagent-remediation:8084"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tagent-api-gateway
+  namespace: tagent
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8080
+      targetPort: 8080
+      name: http
+  selector:
+    app: tagent-api-gateway

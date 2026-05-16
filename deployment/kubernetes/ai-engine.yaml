@@ -1,0 +1,67 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tagent-ai-engine
+  namespace: tagent
+  labels:
+    app: tagent-ai-engine
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: tagent-ai-engine
+  template:
+    metadata:
+      labels:
+        app: tagent-ai-engine
+    spec:
+      containers:
+        - name: ai-engine
+          image: ghcr.io/tagent-dev/ai-engine:latest
+          ports:
+            - containerPort: 8083
+              name: http
+          env:
+            - name: PORT
+              value: "8083"
+            - name: OLLAMA_ENDPOINT
+              value: "http://tagent-ollama:11434"
+            - name: OLLAMA_MODEL
+              valueFrom:
+                configMapKeyRef:
+                  name: tagent-config
+                  key: OLLAMA_MODEL
+            - name: OLLAMA_EMBEDDING_MODEL
+              valueFrom:
+                configMapKeyRef:
+                  name: tagent-config
+                  key: OLLAMA_EMBEDDING_MODEL
+            - name: DISCOVERY_URL
+              value: "http://tagent-discovery:8081"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8083
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 200m
+              memory: 256Mi
+            limits:
+              cpu: 1000m
+              memory: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tagent-ai-engine
+  namespace: tagent
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8083
+      targetPort: 8083
+      name: http
+  selector:
+    app: tagent-ai-engine

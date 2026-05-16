@@ -1,0 +1,123 @@
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: tagent-api-gateway
+  namespace: tagent
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: tagent-discovery
+  namespace: tagent
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: tagent-monitoring
+  namespace: tagent
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: tagent-remediation
+  namespace: tagent
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: tagent-discovery
+rules:
+  - apiGroups: [""]
+    resources:
+      [
+        "pods",
+        "services",
+        "nodes",
+        "namespaces",
+        "events",
+        "configmaps",
+        "endpoints",
+      ]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "replicasets", "statefulsets", "daemonsets"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["ingresses"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["autoscaling"]
+    resources: ["horizontalpodautoscalers"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["batch"]
+    resources: ["jobs", "cronjobs"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: tagent-discovery
+subjects:
+  - kind: ServiceAccount
+    name: tagent-discovery
+    namespace: tagent
+roleRef:
+  kind: ClusterRole
+  name: tagent-discovery
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: tagent-monitoring
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "nodes"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["metrics.k8s.io"]
+    resources: ["pods", "nodes"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: tagent-monitoring
+subjects:
+  - kind: ServiceAccount
+    name: tagent-monitoring
+    namespace: tagent
+roleRef:
+  kind: ClusterRole
+  name: tagent-monitoring
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: tagent-remediation
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "delete"]
+  - apiGroups: [""]
+    resources: ["pods/eviction"]
+    verbs: ["create"]
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "patch", "update"]
+  - apiGroups: ["autoscaling"]
+    resources: ["horizontalpodautoscalers"]
+    verbs: ["get", "list", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: tagent-remediation
+subjects:
+  - kind: ServiceAccount
+    name: tagent-remediation
+    namespace: tagent
+roleRef:
+  kind: ClusterRole
+  name: tagent-remediation
+  apiGroup: rbac.authorization.k8s.io
