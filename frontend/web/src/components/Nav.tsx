@@ -6,7 +6,8 @@ import { cn } from "@/lib/utils";
 import {
     LayoutDashboard, Server, Network, AlertTriangle, Activity,
     ScrollText, ShieldAlert, MessageSquare, Video, Wrench,
-    Moon, BookOpen, FileText, Settings,
+    Moon, BookOpen, FileText, Settings, GitBranch, DollarSign,
+    Zap, ClipboardList, Terminal, Box, Scaling,
 } from "lucide-react";
 
 const links = [
@@ -14,7 +15,11 @@ const links = [
         group: "Overview", items: [
             { href: "/", icon: LayoutDashboard, label: "Dashboard" },
             { href: "/clusters", icon: Server, label: "Clusters" },
+            { href: "/pods", icon: Box, label: "Pods" },
             { href: "/topology", icon: Network, label: "Topology" },
+            { href: "/autoscaling", icon: Scaling, label: "Autoscaling" },
+            { href: "/deployments", icon: GitBranch, label: "Deployments" },
+            { href: "/cost", icon: DollarSign, label: "Cost" },
         ]
     },
     {
@@ -31,12 +36,15 @@ const links = [
             { href: "/briefing", icon: Video, label: "Video Briefing" },
             { href: "/remediation", icon: Wrench, label: "Remediation" },
             { href: "/night-guardian", icon: Moon, label: "Night Guardian" },
+            { href: "/chaos", icon: Zap, label: "Chaos Testing" },
         ]
     },
     {
         group: "Learn", items: [
             { href: "/knowledge", icon: BookOpen, label: "Knowledge" },
             { href: "/reports", icon: FileText, label: "Reports" },
+            { href: "/audit", icon: ClipboardList, label: "Audit Log" },
+            { href: "/cli", icon: Terminal, label: "CLI" },
         ]
     },
 ];
