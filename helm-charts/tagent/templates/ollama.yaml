@@ -1,0 +1,89 @@
+{{- if .Values.ollama.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-ollama
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "tagent.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ollama
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 11434
+      targetPort: 11434
+  selector:
+    {{- include "tagent.selectorLabels" (dict "Release" .Release "component" "ollama") | nindent 4 }}
+---
+{{- if .Values.ollama.persistence.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ .Release.Name }}-ollama
+  namespace: {{ .Release.Namespace }}
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: {{ .Values.ollama.persistence.size | quote }}
+  {{- with .Values.ollama.persistence.storageClass }}
+  storageClassName: {{ . | quote }}
+  {{- end }}
+---
+{{- end }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-ollama
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "tagent.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ollama
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "tagent.selectorLabels" (dict "Release" .Release "component" "ollama") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "tagent.selectorLabels" (dict "Release" .Release "component" "ollama") | nindent 8 }}
+    spec:
+      containers:
+        - name: ollama
+          image: "{{ .Values.ollama.image.repository }}:{{ .Values.ollama.image.tag }}"
+          imagePullPolicy: {{ .Values.ollama.image.pullPolicy }}
+          ports:
+            - containerPort: 11434
+              name: http
+          env:
+            - name: OLLAMA_HOST
+              value: "0.0.0.0"
+          # Pull the default chat + embedding model on first start.
+          lifecycle:
+            postStart:
+              exec:
+                command:
+                  - sh
+                  - -c
+                  - |
+                    sleep 5
+                    ollama pull {{ .Values.ollama.model }} || true
+                    ollama pull {{ .Values.ollama.embeddingModel }} || true
+          resources:
+            {{- toYaml .Values.ollama.resources | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /root/.ollama
+      volumes:
+        - name: data
+          {{- if .Values.ollama.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ .Release.Name }}-ollama
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+{{- end }}

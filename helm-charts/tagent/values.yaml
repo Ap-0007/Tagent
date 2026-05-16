@@ -1,0 +1,70 @@
+# Default values for Tagent.
+# Override per-environment with values-development.yaml or values-production.yaml.
+
+createNamespace: false
+
+# ----- Frontend Web -----
+web:
+  replicaCount: 1
+  image:
+    repository: ghcr.io/tagent-ai/web
+    tag: "" # defaults to Chart.appVersion
+    pullPolicy: IfNotPresent
+  apiUrl: "http://tagent-api-gateway"
+  service:
+    type: ClusterIP
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+# ----- Backend services (placeholders, built later) -----
+apiGateway:
+  enabled: false
+  image:
+    repository: ghcr.io/tagent-ai/api-gateway
+    tag: ""
+    pullPolicy: IfNotPresent
+  port: 8080
+
+# ----- Local LLM runtime (HARD REQUIREMENT — no cloud APIs) -----
+# See doc/AI_REQUIREMENTS.md
+ollama:
+  enabled: true
+  image:
+    repository: ollama/ollama
+    tag: latest
+    pullPolicy: IfNotPresent
+  model: "llama3.1:8b"
+  embeddingModel: "nomic-embed-text"
+  persistence:
+    enabled: true
+    size: 20Gi
+    storageClass: ""
+  resources:
+    requests:
+      cpu: "1"
+      memory: 6Gi
+    limits:
+      cpu: "4"
+      memory: 12Gi
+
+# ----- Ingress (set true for EKS with ALB or NGINX) -----
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: tagent.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+# ----- RBAC -----
+rbac:
+  create: true
+  readOnly: true

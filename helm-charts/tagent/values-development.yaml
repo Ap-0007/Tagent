@@ -1,0 +1,28 @@
+# Development overrides
+createNamespace: true
+
+web:
+  replicaCount: 1
+  image:
+    pullPolicy: Always
+  service:
+    type: NodePort
+  apiUrl: "http://localhost:8080"
+
+# Smaller Ollama footprint for local dev clusters
+ollama:
+  enabled: true
+  model: "llama3.1:8b"
+  persistence:
+    enabled: false
+    size: 10Gi
+  resources:
+    requests:
+      cpu: 500m
+      memory: 4Gi
+    limits:
+      cpu: 2
+      memory: 8Gi
+
+ingress:
+  enabled: false

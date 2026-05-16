@@ -1,0 +1,49 @@
+# Production / EKS overrides
+createNamespace: true
+
+web:
+  replicaCount: 2
+  image:
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+
+# Production Ollama: bigger model, persistent disk, higher resources
+ollama:
+  enabled: true
+  model: "llama3.1:8b"
+  embeddingModel: "nomic-embed-text"
+  persistence:
+    enabled: true
+    size: 40Gi
+    storageClass: gp3
+  resources:
+    requests:
+      cpu: "2"
+      memory: 8Gi
+    limits:
+      cpu: "8"
+      memory: 16Gi
+
+# EKS with AWS ALB Ingress Controller
+ingress:
+  enabled: true
+  className: alb
+  annotations:
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}]'
+    alb.ingress.kubernetes.io/healthcheck-path: /api/healthz
+  hosts:
+    - host: tagent.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []

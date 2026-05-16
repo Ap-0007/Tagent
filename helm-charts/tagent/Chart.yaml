@@ -1,0 +1,16 @@
+apiVersion: v2
+name: tagent
+description: AI-Powered Kubernetes Incident Intelligence & Auto-Remediation
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - kubernetes
+  - sre
+  - incident-management
+  - ai
+  - auto-remediation
+  - observability
+maintainers:
+  - name: Tagent Team
+    url: https://github.com/tagent-ai/tagent

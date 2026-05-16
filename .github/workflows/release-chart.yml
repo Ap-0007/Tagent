@@ -1,0 +1,46 @@
+name: Release · Helm Chart
+
+# Publishes the Helm chart to a GitHub Pages chart repository.
+# Users then install with:
+#   helm repo add tagent https://<owner>.github.io/<repo>
+#   helm install tagent tagent/tagent
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "helm-charts/**"
+      - ".github/workflows/release-chart.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Setup Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.14.0
+
+      - name: Run chart-releaser
+        uses: helm/chart-releaser-action@v1.6.0
+        with:
+          charts_dir: helm-charts
+          config: .github/cr.yaml
+        env:
+          CR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
