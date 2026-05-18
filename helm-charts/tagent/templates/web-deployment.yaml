@@ -29,6 +29,10 @@ spec:
           containerPort: 3000
           protocol: TCP
         env:
+        - name: HOSTNAME
+          value: "0.0.0.0"
+        - name: PORT
+          value: "3000"
         - name: NEXT_PUBLIC_API_URL
           value: {{ .Values.web.apiUrl | quote }}
         - name: NODE_ENV
