@@ -45,16 +45,10 @@ jobs:
         env:
           NEXT_TELEMETRY_DISABLED: "1"
 
-      - name: Start server
-        run: |
-          npm run start &
-          npx wait-on http://localhost:3000 --timeout 30000
-
       - name: Capture screenshots
         run: |
           npx playwright test --project=chromium \
-            --reporter=html \
-            --output=test-results/${{ matrix.viewport.name }}-${{ matrix.theme }}
+            --reporter=html
         env:
           VIEWPORT_WIDTH: ${{ matrix.viewport.width }}
           VIEWPORT_HEIGHT: ${{ matrix.viewport.height }}
