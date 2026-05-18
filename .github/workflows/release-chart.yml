@@ -1,10 +1,5 @@
 name: Release · Helm Chart
 
-# Publishes the Helm chart to a GitHub Pages chart repository.
-# Users then install with:
-#   helm repo add tagent https://<owner>.github.io/<repo>
-#   helm install tagent tagent/tagent
-
 on:
   push:
     branches: [main]
@@ -37,10 +32,36 @@ jobs:
         with:
           version: v3.14.0
 
-      - name: Run chart-releaser
-        uses: helm/chart-releaser-action@v1.6.0
-        with:
-          charts_dir: helm-charts
-          config: .github/cr.yaml
+      - name: Package chart
+        run: |
+          mkdir -p .cr-release-packages
+          helm package helm-charts/tagent -d .cr-release-packages
+
+      - name: Upload chart to GitHub Release
         env:
-          CR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="tagent-$(grep '^version:' helm-charts/tagent/Chart.yaml | awk '{print $2}')"
+          # Create release if it doesn't exist
+          gh release create "$TAG" .cr-release-packages/*.tgz --title "$TAG" --notes "Helm chart release" || true
+          # Upload package to existing release
+          gh release upload "$TAG" .cr-release-packages/*.tgz --clobber || true
+
+      - name: Update gh-pages index
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Checkout gh-pages
+          git checkout gh-pages || git checkout --orphan gh-pages
+
+          # Generate index.yaml
+          REPO_URL="https://github.com/${{ github.repository }}/releases/download"
+          helm repo index .cr-release-packages --url "$REPO_URL/tagent-$(grep '^version:' helm-charts/tagent/Chart.yaml | awk '{print $2}')"
+
+          # Copy index to root
+          cp .cr-release-packages/index.yaml index.yaml
+
+          # Commit and push
+          git add index.yaml
+          git commit -m "Update Helm chart index" --allow-empty
+          git push origin gh-pages --force
