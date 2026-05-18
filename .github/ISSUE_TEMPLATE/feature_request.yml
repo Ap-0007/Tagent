@@ -1,0 +1,52 @@
+name: Feature Request
+description: Suggest a new feature for Tagent
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for suggesting a feature! Please describe what you'd like.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What problem does this solve?
+      placeholder: I'm always frustrated when...
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: How should this work?
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Any other approaches you've thought about?
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Dashboard UI
+        - AI Engine / Chat
+        - Discovery / Scanning
+        - Monitoring / Metrics
+        - Remediation
+        - Night Guardian
+        - Video Briefing
+        - Notifications / Escalation
+        - Helm Chart / Deployment
+        - CLI
+        - Documentation
+        - Other
+    validations:
+      required: true

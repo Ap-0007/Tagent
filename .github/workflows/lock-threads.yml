@@ -1,0 +1,28 @@
+name: Lock Old Threads
+
+on:
+  schedule:
+    - cron: "0 5 * * 0" # Sunday 5 AM UTC
+  workflow_dispatch:
+
+permissions:
+  issues: write
+  pull-requests: write
+
+jobs:
+  lock:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: dessant/lock-threads@v5
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          issue-inactive-days: 90
+          issue-lock-reason: "resolved"
+          issue-comment: |
+            This issue has been locked because it has been closed for 90 days with no further activity.
+            If you have a related problem, please open a new issue with current information.
+          pr-inactive-days: 60
+          pr-lock-reason: "resolved"
+          pr-comment: |
+            This PR has been locked because it has been closed for 60 days.
+            If you'd like to continue this work, please open a new PR.

@@ -1,0 +1,63 @@
+name: Security Scan
+
+on:
+  schedule:
+    - cron: "0 6 * * 1" # Monday 6 AM UTC
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  trivy:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        image:
+          - yaswanth111/tagent-api-gateway:latest
+          - yaswanth111/tagent-discovery:latest
+          - yaswanth111/tagent-monitoring:latest
+          - yaswanth111/tagent-ai-engine:latest
+          - yaswanth111/tagent-remediation:latest
+          - yaswanth111/tagent-web:latest
+    steps:
+      - uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ matrix.image }}
+          format: "sarif"
+          output: "trivy-results.sarif"
+          severity: "CRITICAL,HIGH"
+        continue-on-error: true
+
+      - uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: "trivy-results.sarif"
+        if: always()
+
+  govulncheck:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service: [api-gateway, discovery, monitoring, remediation]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.21"
+      - name: Install govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@latest
+      - name: Run govulncheck
+        working-directory: backend/services/${{ matrix.service }}
+        run: |
+          go mod tidy
+          govulncheck ./... || true
+
+  pip-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install pip-audit
+      - run: pip-audit -r backend/services/ai-engine/requirements.txt || true

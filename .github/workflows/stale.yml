@@ -1,0 +1,116 @@
+name: Repository Lifecycle
+
+on:
+  schedule:
+    - cron: "0 4 * * *" # Daily 4 AM UTC
+  workflow_dispatch:
+
+permissions:
+  issues: write
+  pull-requests: write
+
+jobs:
+  stale-issues:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/stale@v9
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          # --- Issues ---
+          days-before-issue-stale: 30
+          days-before-issue-close: 14
+          stale-issue-label: "lifecycle/stale"
+          close-issue-label: "lifecycle/closed-stale"
+          stale-issue-message: |
+            This issue has been inactive for 30 days. It will be closed in 14 days unless there is new activity.
+
+            If this is still relevant:
+            - Comment with an update or workaround
+            - Add the `lifecycle/frozen` label to keep it open indefinitely
+
+            Thank you for contributing to Tagent.
+          close-issue-message: |
+            This issue has been closed due to inactivity. If the problem persists, please open a new issue with updated information.
+          # Protect important issues from stale
+          exempt-issue-labels: "lifecycle/frozen,priority/critical,priority/high,kind/security,kind/roadmap,good first issue,help wanted"
+          # --- PRs ---
+          days-before-pr-stale: 21
+          days-before-pr-close: 7
+          stale-pr-label: "lifecycle/stale"
+          close-pr-label: "lifecycle/closed-stale"
+          stale-pr-message: |
+            This PR has been inactive for 21 days. It will be closed in 7 days unless updated.
+
+            If you're still working on this:
+            - Push new commits or rebase
+            - Comment with a status update
+            - Add `lifecycle/frozen` to keep it open
+
+            If you'd like someone else to take over, comment `/assign` and we'll find a new owner.
+          close-pr-message: |
+            This PR has been closed due to inactivity. The branch has not been deleted — feel free to reopen when ready.
+          exempt-pr-labels: "lifecycle/frozen,priority/critical,do-not-close"
+          # Limits
+          operations-per-run: 100
+          ascending: true
+          remove-stale-when-updated: true
+
+  abandoned-prs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/stale@v9
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          only-pr: true
+          days-before-stale: 60
+          days-before-close: 7
+          stale-pr-label: "lifecycle/abandoned"
+          stale-pr-message: |
+            This PR appears abandoned (60+ days inactive). It will be closed in 7 days.
+
+            The work here may still be valuable. If anyone wants to continue:
+            1. Open a new PR referencing this one
+            2. Cherry-pick the commits
+            3. Comment here and we'll transfer ownership
+
+            Thank you for your contribution.
+          exempt-pr-labels: "lifecycle/frozen,priority/critical"
+          operations-per-run: 30
+
+  needs-triage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const { data: issues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: '',
+              per_page: 100,
+              sort: 'created',
+              direction: 'asc',
+            });
+
+            const now = new Date();
+            const threeDays = 3 * 24 * 60 * 60 * 1000;
+
+            for (const issue of issues) {
+              if (issue.pull_request) continue;
+              const labels = issue.labels.map(l => l.name);
+              const hasKind = labels.some(l => l.startsWith('kind/'));
+              const hasPriority = labels.some(l => l.startsWith('priority/'));
+              const hasArea = labels.some(l => l.startsWith('area/'));
+              const hasTriage = labels.includes('triage');
+              const age = now - new Date(issue.created_at);
+
+              if (!hasKind && !hasPriority && !hasArea && !hasTriage && age > threeDays) {
+                await github.rest.issues.addLabels({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issue.number,
+                  labels: ['needs-triage'],
+                });
+              }
+            }

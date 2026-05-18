@@ -1,118 +1,97 @@
-name: Build & Push All Images
+name: Build Images
 
 on:
   push:
     branches: [main]
+    tags: ["v*"]
   workflow_dispatch:
+    inputs:
+      tag:
+        description: "Image tag override"
+        required: false
+        default: ""
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: false
 
 env:
-  DOCKERHUB_USER: yaswanth111
+  REGISTRY: docker.io
+  ORG: yaswanth111
 
 jobs:
-  build-api-gateway:
+  meta:
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      is_release: ${{ steps.version.outputs.is_release }}
     steps:
       - uses: actions/checkout@v4
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
-        with:
-          username: ${{ env.DOCKERHUB_USER }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-      - uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: deployment/docker/api-gateway.Dockerfile
-          push: true
-          tags: ${{ env.DOCKERHUB_USER }}/tagent-api-gateway:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+      - id: version
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            VERSION="${{ github.ref_name }}"
+            echo "version=${VERSION#v}" >> $GITHUB_OUTPUT
+            echo "is_release=true" >> $GITHUB_OUTPUT
+          elif [[ -n "${{ github.event.inputs.tag }}" ]]; then
+            echo "version=${{ github.event.inputs.tag }}" >> $GITHUB_OUTPUT
+            echo "is_release=false" >> $GITHUB_OUTPUT
+          else
+            SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+            echo "version=dev-${SHA}" >> $GITHUB_OUTPUT
+            echo "is_release=false" >> $GITHUB_OUTPUT
+          fi
 
-  build-discovery:
+  build:
+    needs: meta
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - service: api-gateway
+            dockerfile: deployment/docker/api-gateway.Dockerfile
+          - service: discovery
+            dockerfile: deployment/docker/discovery.Dockerfile
+          - service: monitoring
+            dockerfile: deployment/docker/monitoring.Dockerfile
+          - service: ai-engine
+            dockerfile: deployment/docker/ai-engine.Dockerfile
+          - service: remediation
+            dockerfile: deployment/docker/remediation.Dockerfile
+          - service: web
+            dockerfile: deployment/docker/web.Dockerfile
     steps:
       - uses: actions/checkout@v4
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
-        with:
-          username: ${{ env.DOCKERHUB_USER }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-      - uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: deployment/docker/discovery.Dockerfile
-          push: true
-          tags: ${{ env.DOCKERHUB_USER }}/tagent-discovery:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
 
-  build-monitoring:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
-        with:
-          username: ${{ env.DOCKERHUB_USER }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-      - uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: deployment/docker/monitoring.Dockerfile
-          push: true
-          tags: ${{ env.DOCKERHUB_USER }}/tagent-monitoring:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+      - uses: docker/setup-qemu-action@v3
 
-  build-ai-engine:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
-        with:
-          username: ${{ env.DOCKERHUB_USER }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-      - uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: deployment/docker/ai-engine.Dockerfile
-          push: true
-          tags: ${{ env.DOCKERHUB_USER }}/tagent-ai-engine:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
 
-  build-remediation:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
         with:
-          username: ${{ env.DOCKERHUB_USER }}
+          username: ${{ env.ORG }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-      - uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: deployment/docker/remediation.Dockerfile
-          push: true
-          tags: ${{ env.DOCKERHUB_USER }}/tagent-remediation:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
 
-  build-web:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
-        with:
-          username: ${{ env.DOCKERHUB_USER }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Build tags
+        id: tags
+        run: |
+          IMAGE="${{ env.ORG }}/tagent-${{ matrix.service }}"
+          TAGS="${IMAGE}:${{ needs.meta.outputs.version }}"
+          if [[ "${{ needs.meta.outputs.is_release }}" == "true" ]]; then
+            TAGS="${TAGS},${IMAGE}:latest"
+          fi
+          if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+            TAGS="${TAGS},${IMAGE}:latest"
+          fi
+          echo "tags=${TAGS}" >> $GITHUB_OUTPUT
+
       - uses: docker/build-push-action@v5
         with:
           context: .
-          file: deployment/docker/web.Dockerfile
+          file: ${{ matrix.dockerfile }}
           push: true
-          tags: ${{ env.DOCKERHUB_USER }}/tagent-web:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          platforms: linux/amd64,linux/arm64
+          tags: ${{ steps.tags.outputs.tags }}
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,scope=${{ matrix.service }},mode=max

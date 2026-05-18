@@ -1,0 +1,118 @@
+# Lifecycle
+- name: lifecycle/stale
+  color: "795548"
+  description: "Inactive for 30+ days, will be closed soon"
+- name: lifecycle/closed-stale
+  color: "9e9e9e"
+  description: "Closed due to inactivity"
+- name: lifecycle/frozen
+  color: "0d47a1"
+  description: "Protected from stale bot — kept open indefinitely"
+- name: lifecycle/abandoned
+  color: "b71c1c"
+  description: "PR abandoned by author (60+ days)"
+
+# Priority
+- name: priority/critical
+  color: "d32f2f"
+  description: "Must fix immediately"
+- name: priority/high
+  color: "f44336"
+  description: "Fix in current sprint"
+- name: priority/medium
+  color: "ff9800"
+  description: "Fix in next sprint"
+- name: priority/low
+  color: "4caf50"
+  description: "Nice to have"
+
+# Kind
+- name: kind/bug
+  color: "e53935"
+  description: "Something isn't working"
+- name: kind/feature
+  color: "1565c0"
+  description: "New feature request"
+- name: kind/security
+  color: "d50000"
+  description: "Security vulnerability"
+- name: kind/roadmap
+  color: "6a1b9a"
+  description: "Part of the project roadmap"
+- name: kind/docs
+  color: "0277bd"
+  description: "Documentation improvement"
+- name: kind/refactor
+  color: "00695c"
+  description: "Code improvement without behavior change"
+
+# Area
+- name: area/frontend
+  color: "42a5f5"
+  description: "Dashboard UI"
+- name: area/ai-engine
+  color: "7e57c2"
+  description: "AI/ML components"
+- name: area/discovery
+  color: "26a69a"
+  description: "K8s resource scanning"
+- name: area/remediation
+  color: "ef5350"
+  description: "Auto-fix engine"
+- name: area/helm
+  color: "0d47a1"
+  description: "Helm chart and deployment"
+- name: area/ci
+  color: "546e7a"
+  description: "CI/CD pipelines"
+
+# Size
+- name: size/XS
+  color: "009688"
+  description: "<10 lines changed"
+- name: size/S
+  color: "4caf50"
+  description: "<50 lines changed"
+- name: size/M
+  color: "ff9800"
+  description: "<200 lines changed"
+- name: size/L
+  color: "f44336"
+  description: "<500 lines changed"
+- name: size/XL
+  color: "b71c1c"
+  description: "500+ lines changed"
+
+# Meta
+- name: needs-triage
+  color: "fbca04"
+  description: "Needs maintainer attention"
+- name: good first issue
+  color: "7057ff"
+  description: "Good for newcomers"
+- name: help wanted
+  color: "008672"
+  description: "Extra attention needed"
+- name: first-contribution
+  color: "e1bee7"
+  description: "First-time contributor"
+- name: do-not-close
+  color: "0d47a1"
+  description: "Keep open regardless of inactivity"
+- name: meta/dashboard
+  color: "607d8b"
+  description: "Repository health dashboard"
+
+# Standard
+- name: bug
+  color: "d73a4a"
+  description: "Something isn't working"
+- name: enhancement
+  color: "a2eeef"
+  description: "New feature or request"
+- name: dependencies
+  color: "0366d6"
+  description: "Dependency updates"
+- name: triage
+  color: "fbca04"
+  description: "Being triaged"

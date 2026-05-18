@@ -1,0 +1,55 @@
+# GitHub auto-generated release notes configuration
+# Controls how release notes are categorized when creating a GitHub Release
+
+changelog:
+  exclude:
+    labels:
+      - "dependencies"
+      - "meta/dashboard"
+      - "lifecycle/stale"
+    authors:
+      - "dependabot"
+      - "github-actions[bot]"
+
+  categories:
+    - title: "🚀 Features"
+      labels:
+        - "enhancement"
+        - "kind/feature"
+
+    - title: "🐛 Bug Fixes"
+      labels:
+        - "bug"
+        - "kind/bug"
+
+    - title: "🔒 Security"
+      labels:
+        - "kind/security"
+
+    - title: "📖 Documentation"
+      labels:
+        - "kind/docs"
+
+    - title: "🏗️ Infrastructure"
+      labels:
+        - "area/helm"
+        - "area/ci"
+        - "docker"
+
+    - title: "🎨 Frontend"
+      labels:
+        - "area/frontend"
+        - "frontend"
+
+    - title: "🤖 AI Engine"
+      labels:
+        - "area/ai-engine"
+
+    - title: "🔧 Maintenance"
+      labels:
+        - "kind/refactor"
+        - "chore"
+
+    - title: "📦 Other Changes"
+      labels:
+        - "*"

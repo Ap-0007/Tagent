@@ -1,0 +1,75 @@
+name: Bug Report
+description: Report a bug in Tagent
+title: "[Bug]: "
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug. Please fill out the details below.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Describe the bug
+      description: A clear description of what the bug is.
+      placeholder: What happened?
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: How can we reproduce this?
+      placeholder: |
+        1. Install Tagent via Helm
+        2. Navigate to /incidents
+        3. Click on an incident
+        4. See error
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What should have happened?
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / Screenshots
+      description: Paste relevant logs or attach screenshots.
+      render: shell
+
+  - type: input
+    id: version
+    attributes:
+      label: Tagent version
+      placeholder: "0.2.0"
+    validations:
+      required: true
+
+  - type: input
+    id: k8s-version
+    attributes:
+      label: Kubernetes version
+      placeholder: "1.30"
+
+  - type: dropdown
+    id: environment
+    attributes:
+      label: Environment
+      options:
+        - EKS
+        - GKE
+        - AKS
+        - minikube
+        - kind
+        - Docker Desktop
+        - Other
+    validations:
+      required: true

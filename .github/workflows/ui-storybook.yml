@@ -1,0 +1,126 @@
+name: UI · Storybook
+
+on:
+  push:
+    branches: [main, "release/**"]
+    paths:
+      - "frontend/web/src/**"
+      - "frontend/web/package*.json"
+      - "frontend/web/.storybook/**"
+      - ".github/workflows/ui-storybook.yml"
+  pull_request:
+    paths:
+      - "frontend/web/src/**"
+      - "frontend/web/package*.json"
+      - "frontend/web/.storybook/**"
+  workflow_dispatch:
+
+concurrency:
+  group: storybook-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+  deployments: write
+
+defaults:
+  run:
+    working-directory: frontend/web
+
+jobs:
+  build-storybook:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/web/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Storybook
+        run: npx storybook build -o storybook-static
+        env:
+          NODE_OPTIONS: "--max-old-space-size=4096"
+
+      - name: Upload Storybook artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: storybook-build
+          path: frontend/web/storybook-static
+          retention-days: 14
+
+  chromatic:
+    needs: build-storybook
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/web/package-lock.json
+
+      - run: npm ci
+
+      - name: Publish to Chromatic
+        id: chromatic
+        uses: chromaui/action@v11
+        with:
+          projectToken: ${{ secrets.CHROMATIC_PROJECT_TOKEN }}
+          workingDir: frontend/web
+          buildScriptName: "build-storybook"
+          exitZeroOnChanges: true
+          exitOnceUploaded: true
+          onlyChanged: true
+          externals: "**/*.css"
+          skip: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+
+      - name: Comment PR with Chromatic link
+        if: github.event_name == 'pull_request' && steps.chromatic.outputs.storybookUrl
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const body = [
+              '## 🎨 Visual Review',
+              '',
+              `| Resource | Link |`,
+              `|----------|------|`,
+              `| Storybook | [Preview](${{ steps.chromatic.outputs.storybookUrl }}) |`,
+              `| Chromatic | [Visual Changes](${{ steps.chromatic.outputs.buildUrl }}) |`,
+              '',
+              `**Changes detected:** ${{ steps.chromatic.outputs.changeCount }} component(s)`,
+              `**Status:** ${{ steps.chromatic.outputs.code == '0' && '✅ No regressions' || '⚠️ Review needed' }}`,
+            ].join('\n');
+
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            const existing = comments.find(c => c.body.includes('## 🎨 Visual Review'));
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body,
+              });
+            }

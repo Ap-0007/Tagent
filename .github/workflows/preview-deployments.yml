@@ -1,0 +1,98 @@
+name: UI · Preview Deployment
+
+on:
+  pull_request:
+    paths:
+      - "frontend/web/src/**"
+      - "frontend/web/package*.json"
+  workflow_dispatch:
+
+concurrency:
+  group: preview-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+  deployments: write
+
+defaults:
+  run:
+    working-directory: frontend/web
+
+jobs:
+  deploy-preview:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/web/package-lock.json
+
+      - run: npm ci
+
+      - name: Build
+        run: npm run build
+        env:
+          NEXT_TELEMETRY_DISABLED: "1"
+
+      - name: Export static
+        run: |
+          # For preview, generate static export
+          npx next export -o out 2>/dev/null || true
+          # Fallback: use .next/static for preview
+          mkdir -p preview
+          cp -r .next/static preview/ 2>/dev/null || true
+          echo "<html><body><h1>Tagent Preview</h1><p>PR #${{ github.event.pull_request.number }}</p><p>Build successful. Full preview requires server deployment.</p></body></html>" > preview/index.html
+
+      - name: Deploy to GitHub Pages (PR preview)
+        uses: actions/upload-artifact@v4
+        with:
+          name: preview-pr-${{ github.event.pull_request.number }}
+          path: frontend/web/preview/
+          retention-days: 7
+
+      - name: Comment PR with preview info
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const body = [
+              '## 🚀 Preview Deployment',
+              '',
+              `**Status:** ✅ Build successful`,
+              `**PR:** #${{ github.event.pull_request.number }}`,
+              `**Commit:** \`${{ github.sha }}\``,
+              '',
+              '> Preview artifact uploaded. Download from the Actions tab to review locally.',
+              '> For live preview, configure Vercel/Netlify integration.',
+              '',
+              '### Quick local preview:',
+              '```bash',
+              'cd frontend/web && npm ci && npm run dev',
+              '```',
+            ].join('\n');
+
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            const existing = comments.find(c => c.body.includes('## 🚀 Preview Deployment'));
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body,
+              });
+            }
