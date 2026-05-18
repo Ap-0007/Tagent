@@ -21,7 +21,7 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: "1.21"
-          cache-dependency-path: backend/services/${{ matrix.service }}/go.mod
+          cache: false
       - name: Tidy
         working-directory: backend/services/${{ matrix.service }}
         run: go mod tidy
@@ -50,7 +50,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: npm
       - run: npm install
         working-directory: frontend/web
       - run: npm run type-check

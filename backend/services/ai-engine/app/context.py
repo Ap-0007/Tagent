@@ -5,7 +5,6 @@ When it's not running (local dev without K8s), falls back to mock data.
 """
 
 import os
-import json
 import httpx
 
 DISCOVERY_URL = os.getenv("DISCOVERY_URL", "http://localhost:8081")
@@ -34,7 +33,7 @@ def format_live_context(data: dict) -> str:
     lines.append("")
 
     summary = data.get("summary", {})
-    lines.append(f"SUMMARY:")
+    lines.append("SUMMARY:")
     lines.append(f"- Nodes: {summary.get('total_nodes', 0)} total, {summary.get('ready_nodes', 0)} Ready")
     lines.append(f"- Pods: {summary.get('total_pods', 0)} total, {summary.get('running_pods', 0)} Running, {summary.get('failed_pods', 0)} Failed/CrashLoop")
     lines.append(f"- Deployments: {summary.get('total_deployments', 0)}")

@@ -33,7 +33,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: npm
       - run: npm install
       - name: Run unit tests
         run: npx vitest run --coverage --reporter=json --outputFile=test-results.json
@@ -52,7 +51,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: npm
       - run: npm install
       - name: TypeScript strict check
         run: npx tsc --noEmit --strict
@@ -64,7 +62,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: npm
       - run: npm install
       - name: ESLint
         run: npx eslint src/ --format json --output-file eslint-report.json
@@ -83,7 +80,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: npm
       - run: npm install
       - name: Production build
         run: npm run build
