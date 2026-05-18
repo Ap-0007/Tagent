@@ -49,7 +49,7 @@ jobs:
         run: |
           npm run start &
           sleep 5
-          npx playwright test --project=chromium --reporter=html
+          npx playwright test --project=chromium --reporter=html --update-snapshots
         env:
           VIEWPORT_WIDTH: ${{ matrix.viewport.width }}
           VIEWPORT_HEIGHT: ${{ matrix.viewport.height }}
