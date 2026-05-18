@@ -19,7 +19,8 @@ async def fetch_cluster_context() -> str:
             if r.status_code == 200:
                 data = r.json()
                 return format_live_context(data)
-        except Exception:
+        except Exception as e:
+            # Discovery Service not reachable — fall back to mock
             pass
 
     # Fallback to mock if Discovery Service is not reachable
