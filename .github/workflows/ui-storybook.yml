@@ -1,18 +1,15 @@
 name: UI · Storybook
 
+# DISABLED: Storybook has compatibility issues with Next.js 14 bundled webpack.
+# Re-enable after upgrading to Next.js 15 or switching to @storybook/react-vite.
+# on:
+#   push:
+#     branches: [main, "release/**"]
+#     paths:
+#       - "frontend/web/src/**"
+#   workflow_dispatch:
+
 on:
-  push:
-    branches: [main, "release/**"]
-    paths:
-      - "frontend/web/src/**"
-      - "frontend/web/package*.json"
-      - "frontend/web/.storybook/**"
-      - ".github/workflows/ui-storybook.yml"
-  pull_request:
-    paths:
-      - "frontend/web/src/**"
-      - "frontend/web/package*.json"
-      - "frontend/web/.storybook/**"
   workflow_dispatch:
 
 concurrency:
