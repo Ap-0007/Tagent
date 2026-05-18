@@ -3,9 +3,9 @@ entries:
   tagent:
   - apiVersion: v2
     appVersion: 0.2.0
-    created: "2026-05-18T07:22:07.597974599Z"
+    created: "2026-05-18T07:34:38.016785143Z"
     description: AI-Powered Kubernetes Incident Intelligence & Auto-Remediation
-    digest: 9b490ec9ff689a44fede1392fec7764cdad5d044811829bd9f2d60f69f9d5fcd
+    digest: f21c4cb5ca21dce5321b0d7805d5de0884dbe1654d87b133c0b55ae8900a436a
     keywords:
     - kubernetes
     - sre
@@ -21,4 +21,4 @@ entries:
     urls:
     - https://github.com/Tagent-dev/Tagent/releases/download/tagent-0.2.0/tagent-0.2.0.tgz
     version: 0.2.0
-generated: "2026-05-18T07:22:07.597091419Z"
+generated: "2026-05-18T07:34:38.015944559Z"
