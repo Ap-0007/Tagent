@@ -25,10 +25,4 @@ export default defineConfig({
         { name: "mobile-chrome", use: { ...devices["Pixel 5"] } },
         { name: "mobile-safari", use: { ...devices["iPhone 13"] } },
     ],
-    webServer: {
-        command: "npm run start",
-        port: 3000,
-        reuseExistingServer: !process.env.CI,
-        timeout: 30000,
-    },
 });

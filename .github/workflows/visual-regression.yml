@@ -45,10 +45,11 @@ jobs:
         env:
           NEXT_TELEMETRY_DISABLED: "1"
 
-      - name: Capture screenshots
+      - name: Start server and run tests
         run: |
-          npx playwright test --project=chromium \
-            --reporter=html
+          npm run start &
+          sleep 5
+          npx playwright test --project=chromium --reporter=html
         env:
           VIEWPORT_WIDTH: ${{ matrix.viewport.width }}
           VIEWPORT_HEIGHT: ${{ matrix.viewport.height }}
