@@ -32,6 +32,13 @@ jobs:
         with:
           version: v3.14.0
 
+      - name: Get chart version
+        id: version
+        run: |
+          VERSION=$(grep '^version:' helm-charts/tagent/Chart.yaml | awk '{print $2}')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Chart version: $VERSION"
+
       - name: Package chart
         run: |
           mkdir -p .cr-release-packages
@@ -41,27 +48,21 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          TAG="tagent-$(grep '^version:' helm-charts/tagent/Chart.yaml | awk '{print $2}')"
-          # Create release if it doesn't exist
-          gh release create "$TAG" .cr-release-packages/*.tgz --title "$TAG" --notes "Helm chart release" || true
-          # Upload package to existing release
-          gh release upload "$TAG" .cr-release-packages/*.tgz --clobber || true
+          TAG="tagent-${{ steps.version.outputs.version }}"
+          gh release create "$TAG" .cr-release-packages/*.tgz --title "$TAG" --notes "Helm chart release ${{ steps.version.outputs.version }}" 2>/dev/null || true
+          gh release upload "$TAG" .cr-release-packages/*.tgz --clobber 2>/dev/null || true
 
       - name: Update gh-pages index
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Checkout gh-pages
-          git checkout gh-pages || git checkout --orphan gh-pages
+          TAG="tagent-${{ steps.version.outputs.version }}"
+          REPO_URL="https://github.com/${{ github.repository }}/releases/download/${TAG}"
+          helm repo index .cr-release-packages --url "$REPO_URL"
 
-          # Generate index.yaml
-          REPO_URL="https://github.com/${{ github.repository }}/releases/download"
-          helm repo index .cr-release-packages --url "$REPO_URL/tagent-$(grep '^version:' helm-charts/tagent/Chart.yaml | awk '{print $2}')"
-
-          # Copy index to root
+          git stash --include-untracked || true
+          git checkout gh-pages
           cp .cr-release-packages/index.yaml index.yaml
-
-          # Commit and push
           git add index.yaml
-          git commit -m "Update Helm chart index" --allow-empty
-          git push origin gh-pages --force
+          git commit -m "Update Helm chart index for $TAG" --allow-empty
+          git push origin gh-pages
