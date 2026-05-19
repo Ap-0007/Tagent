@@ -1,0 +1,78 @@
+{{- if .Values.postgres.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-postgres
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "tagent.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgres
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "tagent.selectorLabels" (dict "Release" .Release "component" "postgres") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "tagent.selectorLabels" (dict "Release" .Release "component" "postgres") | nindent 8 }}
+    spec:
+      containers:
+      - name: postgres
+        image: postgres:15-alpine
+        ports:
+        - containerPort: 5432
+        env:
+        - name: POSTGRES_DB
+          value: tagent
+        - name: POSTGRES_USER
+          value: tagent
+        - name: POSTGRES_PASSWORD
+          value: {{ .Values.postgres.password | default "tagent123" | quote }}
+        volumeMounts:
+        - name: data
+          mountPath: /var/lib/postgresql/data
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+      volumes:
+      - name: data
+        {{- if .Values.postgres.persistence.enabled }}
+        persistentVolumeClaim:
+          claimName: {{ .Release.Name }}-postgres
+        {{- else }}
+        emptyDir: {}
+        {{- end }}
+---
+{{- if .Values.postgres.persistence.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ .Release.Name }}-postgres
+  namespace: {{ .Release.Namespace }}
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: {{ .Values.postgres.persistence.size | default "5Gi" }}
+---
+{{- end }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-postgres
+  namespace: {{ .Release.Namespace }}
+spec:
+  type: ClusterIP
+  ports:
+  - port: 5432
+    targetPort: 5432
+  selector:
+    {{- include "tagent.selectorLabels" (dict "Release" .Release "component" "postgres") | nindent 4 }}
+{{- end }}

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	metricsv "k8s.io/metrics/pkg/client/clientset/versioned"
@@ -79,18 +80,30 @@ type SvcInfo struct {
 
 // Scanner scans the Kubernetes cluster.
 type Scanner struct {
-	client  *kubernetes.Clientset
+	client  kubernetes.Interface
 	metrics *metricsv.Clientset
 }
 
-func New(client *kubernetes.Clientset, metrics *metricsv.Clientset) *Scanner {
+func New(client kubernetes.Interface, metrics *metricsv.Clientset) *Scanner {
 	return &Scanner{client: client, metrics: metrics}
 }
 
 // Scan performs a full cluster scan and returns the state.
 func (s *Scanner) Scan(ctx context.Context) (*ClusterState, error) {
 	state := &ClusterState{
-		ScannedAt: time.Now().UTC().Format(time.RFC3339),
+		ScannedAt:   time.Now().UTC().Format(time.RFC3339),
+		Nodes:       []NodeInfo{},
+		Pods:        []PodInfo{},
+		Deployments: []DeployInfo{},
+		Services:    []SvcInfo{},
+		Namespaces:  []string{},
+	}
+
+	podMetrics := map[string]map[string]PodUsage{}
+	nodeMetrics := map[string]NodeUsage{}
+	if s.metrics != nil {
+		podMetrics = s.fetchPodMetrics(ctx)
+		nodeMetrics = s.fetchNodeMetrics(ctx)
 	}
 
 	// Namespaces
@@ -128,6 +141,13 @@ func (s *Scanner) Scan(ctx context.Context) (*ClusterState, error) {
 				extIP = addr.Address
 			}
 		}
+		podCount := 0
+		for _, p := range state.Pods {
+			if p.Node == n.Name {
+				podCount++
+			}
+		}
+		usage := nodeMetrics[n.Name]
 		state.Nodes = append(state.Nodes, NodeInfo{
 			Name:       n.Name,
 			Status:     status,
@@ -135,6 +155,9 @@ func (s *Scanner) Scan(ctx context.Context) (*ClusterState, error) {
 			CPUCap:     n.Status.Capacity.Cpu().String(),
 			MemCap:     n.Status.Capacity.Memory().String(),
 			PodCap:     n.Status.Capacity.Pods().String(),
+			CPUUsed:    usage.CPU,
+			MemUsed:    usage.Memory,
+			PodCount:   podCount,
 			InternalIP: intIP,
 			ExternalIP: extIP,
 			Age:        time.Since(n.CreationTimestamp.Time).Round(time.Hour).String(),
@@ -157,17 +180,22 @@ func (s *Scanner) Scan(ctx context.Context) (*ClusterState, error) {
 			}
 		}
 		var cpuReq, memReq string
+		var cpuUsed, memUsed string
 		for _, c := range p.Spec.Containers {
-			if c.Resources.Requests.Cpu() != nil {
-				cpuReq = c.Resources.Requests.Cpu().String()
+			if cpu, ok := c.Resources.Requests[corev1.ResourceCPU]; ok {
+				cpuReq = addQuantityStrings(cpuReq, cpu.String())
 			}
-			if c.Resources.Requests.Memory() != nil {
-				memReq = c.Resources.Requests.Memory().String()
+			if mem, ok := c.Resources.Requests[corev1.ResourceMemory]; ok {
+				memReq = addQuantityStrings(memReq, mem.String())
+			}
+			if usage, ok := podMetrics[p.Namespace+"/"+p.Name][c.Name]; ok {
+				cpuUsed = addQuantityStrings(cpuUsed, usage.CPU)
+				memUsed = addQuantityStrings(memUsed, usage.Memory)
 			}
 		}
 		if status == "Running" {
 			state.Summary.RunningPods++
-		} else if status == "Failed" || status == "CrashLoopBackOff" || status == "Error" {
+		} else if !isHealthyPodStatus(status) {
 			state.Summary.FailedPods++
 		}
 		state.Pods = append(state.Pods, PodInfo{
@@ -177,6 +205,8 @@ func (s *Scanner) Scan(ctx context.Context) (*ClusterState, error) {
 			Restarts:   restarts,
 			CPUReq:     cpuReq,
 			MemReq:     memReq,
+			CPUUsed:    cpuUsed,
+			MemUsed:    memUsed,
 			Node:       p.Spec.NodeName,
 			Age:        time.Since(p.CreationTimestamp.Time).Round(time.Minute).String(),
 			Containers: len(p.Spec.Containers),
@@ -184,16 +214,30 @@ func (s *Scanner) Scan(ctx context.Context) (*ClusterState, error) {
 	}
 	state.Summary.TotalPods = len(podList.Items)
 
+	nodePodCounts := map[string]int{}
+	for _, p := range state.Pods {
+		if p.Node != "" {
+			nodePodCounts[p.Node]++
+		}
+	}
+	for i := range state.Nodes {
+		state.Nodes[i].PodCount = nodePodCounts[state.Nodes[i].Name]
+	}
+
 	// Deployments (all namespaces)
 	depList, err := s.client.AppsV1().Deployments("").List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("list deployments: %w", err)
 	}
 	for _, d := range depList.Items {
+		replicas := int32(1)
+		if d.Spec.Replicas != nil {
+			replicas = *d.Spec.Replicas
+		}
 		state.Deployments = append(state.Deployments, DeployInfo{
 			Name:      d.Name,
 			Namespace: d.Namespace,
-			Replicas:  *d.Spec.Replicas,
+			Replicas:  replicas,
 			Ready:     d.Status.ReadyReplicas,
 			Available: d.Status.AvailableReplicas,
 			Age:       time.Since(d.CreationTimestamp.Time).Round(time.Hour).String(),
@@ -225,4 +269,62 @@ func (s *Scanner) Scan(ctx context.Context) (*ClusterState, error) {
 	state.Summary.TotalServices = len(svcList.Items)
 
 	return state, nil
+}
+
+type PodUsage struct {
+	CPU    string
+	Memory string
+}
+
+type NodeUsage struct {
+	CPU    string
+	Memory string
+}
+
+func (s *Scanner) fetchPodMetrics(ctx context.Context) map[string]map[string]PodUsage {
+	result := map[string]map[string]PodUsage{}
+	metrics, err := s.metrics.MetricsV1beta1().PodMetricses("").List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return result
+	}
+	for _, pod := range metrics.Items {
+		key := pod.Namespace + "/" + pod.Name
+		result[key] = map[string]PodUsage{}
+		for _, container := range pod.Containers {
+			result[key][container.Name] = PodUsage{
+				CPU:    container.Usage.Cpu().String(),
+				Memory: container.Usage.Memory().String(),
+			}
+		}
+	}
+	return result
+}
+
+func (s *Scanner) fetchNodeMetrics(ctx context.Context) map[string]NodeUsage {
+	result := map[string]NodeUsage{}
+	metrics, err := s.metrics.MetricsV1beta1().NodeMetricses().List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return result
+	}
+	for _, node := range metrics.Items {
+		result[node.Name] = NodeUsage{
+			CPU:    node.Usage.Cpu().String(),
+			Memory: node.Usage.Memory().String(),
+		}
+	}
+	return result
+}
+
+func addQuantityStrings(current, next string) string {
+	if current == "" {
+		return next
+	}
+	if next == "" {
+		return current
+	}
+	return current + "+" + next
+}
+
+func isHealthyPodStatus(status string) bool {
+	return status == "Running" || status == "Succeeded" || status == "Completed"
 }

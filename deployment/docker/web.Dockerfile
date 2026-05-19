@@ -5,8 +5,8 @@
 # ---- Stage 1: deps ----
 FROM node:26-alpine AS deps
 WORKDIR /app
-COPY frontend/web/package.json ./
-RUN npm install
+COPY frontend/web/package.json frontend/web/package-lock.json ./
+RUN npm ci
 
 # ---- Stage 2: build ----
 FROM node:26-alpine AS builder
