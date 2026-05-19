@@ -4,9 +4,13 @@
  * Automatically reconnects on disconnect.
  */
 
-const WS_URL = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080")
-  .replace("http://", "ws://")
-  .replace("https://", "wss://") + "/ws";
+function getWsUrl(): string {
+  if (typeof window === "undefined") return "ws://localhost:8080/ws";
+  const base = process.env.NEXT_PUBLIC_API_URL || `http://${window.location.hostname}:8080`;
+  return base.replace("http://", "ws://").replace("https://", "wss://") + "/ws";
+}
+
+const WS_URL = getWsUrl();
 
 export type EventType = "incident" | "remediation" | "metric" | "guardian" | "connected";
 
