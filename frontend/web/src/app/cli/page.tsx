@@ -1,15 +1,13 @@
 import { Terminal } from "lucide-react";
 
 const commands = [
-    { cmd: "tagent connect --cluster production", desc: "Connect to a Kubernetes cluster" },
     { cmd: "tagent status", desc: "Show cluster health summary" },
     { cmd: "tagent incidents", desc: "List active incidents" },
     { cmd: "tagent incidents INC-0142", desc: "Show incident detail" },
+    { cmd: "tagent incidents --stored", desc: "List persisted remediation incidents" },
     { cmd: "tagent analyze INC-0142", desc: "Run AI root cause analysis" },
-    { cmd: "tagent remediate INC-0142", desc: "Execute suggested remediation" },
-    { cmd: "tagent remediate INC-0142 --dry-run", desc: "Preview remediation without executing" },
-    { cmd: "tagent history --service checkout-api", desc: "Show incident history for a service" },
-    { cmd: "tagent report INC-0142", desc: "Generate incident report" },
+    { cmd: "tagent remediate INC-0142 --dry-run", desc: "Infer and preview remediation for an incident" },
+    { cmd: "tagent remediate restart-pod production/checkout-api --dry-run", desc: "Preview explicit remediation" },
     { cmd: "tagent guardian enable", desc: "Enable Night Guardian mode" },
     { cmd: "tagent guardian disable", desc: "Disable Night Guardian mode" },
     { cmd: "tagent chat 'why is checkout slow?'", desc: "Ask AI a question" },
