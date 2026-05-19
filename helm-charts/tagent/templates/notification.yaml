@@ -29,8 +29,6 @@ spec:
         env:
         - name: PORT
           value: "8085"
-        - name: KAFKA_BROKERS
-          value: "{{ .Release.Name }}-kafka:9092"
         - name: SLACK_WEBHOOK_URL
           valueFrom:
             secretKeyRef:
@@ -43,6 +41,8 @@ spec:
               name: {{ .Release.Name }}-secrets
               key: smtp-host
               optional: true
+        - name: SMTP_PORT
+          value: "587"
         - name: SMTP_USER
           valueFrom:
             secretKeyRef:
@@ -55,6 +55,10 @@ spec:
               name: {{ .Release.Name }}-secrets
               key: smtp-password
               optional: true
+        - name: SMTP_FROM
+          value: {{ .Values.notification.smtpFrom | default "" | quote }}
+        - name: SMTP_TO
+          value: {{ .Values.notification.smtpTo | default "" | quote }}
         resources:
           {{- toYaml .Values.notification.resources | nindent 12 }}
         securityContext:

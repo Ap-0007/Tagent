@@ -2,10 +2,9 @@
 
 import { useState } from "react";
 import { Send, Loader2 } from "lucide-react";
+import { sendChat } from "@/lib/api";
 
 interface Msg { role: "user" | "ai"; text: string; }
-
-const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8083";
 
 export default function AIPage() {
     const [input, setInput] = useState("");
@@ -22,21 +21,10 @@ export default function AIPage() {
         setLoading(true);
 
         try {
-            const res = await fetch(`${API}/api/v1/ai/chat`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ message: userMsg }),
-            });
-
-            if (!res.ok) {
-                const err = await res.json().catch(() => ({ detail: "Connection failed" }));
-                setMsgs((m) => [...m, { role: "ai", text: `Error: ${err.detail || res.statusText}. Make sure Ollama is running (docker compose up ollama).` }]);
-            } else {
-                const data = await res.json();
-                setMsgs((m) => [...m, { role: "ai", text: data.response }]);
-            }
-        } catch (e) {
-            setMsgs((m) => [...m, { role: "ai", text: "Cannot reach AI Engine. Start it with:\n\ncd backend/services/ai-engine\nuvicorn app.main:app --port 8083\n\nAnd make sure Ollama is running:\ndocker compose -f docker-compose.dev.yml up ollama" }]);
+            const data = await sendChat(userMsg);
+            setMsgs((m) => [...m, { role: "ai", text: data.response }]);
+        } catch (e: any) {
+            setMsgs((m) => [...m, { role: "ai", text: `Error: ${e.message}\n\nMake sure the API Gateway and AI Engine are running:\n• API Gateway: go run cmd/server/main.go (port 8080)\n• AI Engine: uvicorn app.main:app --port 8083\n• Ollama: docker compose up ollama` }]);
         } finally {
             setLoading(false);
         }
@@ -75,7 +63,6 @@ export default function AIPage() {
                         </div>
                     </div>
                 )}
-
                 {msgs.length === 1 && (
                     <div className="pt-2">
                         <p className="text-[11px] text-zinc-500 mb-2">Try asking:</p>
@@ -91,19 +78,8 @@ export default function AIPage() {
             </div>
             <div className="px-6 py-3 border-t border-zinc-800/60 shrink-0">
                 <div className="flex gap-2">
-                    <input
-                        value={input}
-                        onChange={(e) => setInput(e.target.value)}
-                        onKeyDown={(e) => e.key === "Enter" && send(input)}
-                        placeholder="Ask about your cluster..."
-                        disabled={loading}
-                        className="flex-1 h-9 bg-zinc-900 border border-zinc-800 rounded-md px-3 text-sm text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:border-emerald-500/50 disabled:opacity-50"
-                    />
-                    <button
-                        onClick={() => send(input)}
-                        disabled={loading || !input.trim()}
-                        className="h-9 px-4 bg-emerald-500 text-zinc-900 text-xs font-medium rounded-md hover:bg-emerald-400 flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
+                    <input value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && send(input)} placeholder="Ask about your cluster..." disabled={loading} className="flex-1 h-9 bg-zinc-900 border border-zinc-800 rounded-md px-3 text-sm text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:border-emerald-500/50 disabled:opacity-50" />
+                    <button onClick={() => send(input)} disabled={loading || !input.trim()} className="h-9 px-4 bg-emerald-500 text-zinc-900 text-xs font-medium rounded-md hover:bg-emerald-400 flex items-center gap-1.5 disabled:opacity-50">
                         <Send className="w-3.5 h-3.5" />Send
                     </button>
                 </div>

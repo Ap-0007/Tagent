@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -8,96 +9,110 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
+	"time"
 
 	"github.com/gin-gonic/gin"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
+
+	"github.com/tagent-ai/tagent/backend/services/monitoring/internal/detector"
 )
 
-var prometheusURL string
+var (
+	prometheusURL string
+	det           *detector.Detector
+)
 
 func init() {
 	prometheusURL = envOr("PROMETHEUS_URL", "http://localhost:9090")
 }
 
-type MetricsSummary struct {
-	ClusterCPUPercent float64            `json:"cluster_cpu_percent"`
-	ClusterMemPercent float64            `json:"cluster_memory_percent"`
-	PodMetrics       []PodMetric        `json:"pod_metrics"`
-	NodeMetrics      []NodeMetric       `json:"node_metrics"`
-	Alerts           []Alert            `json:"alerts"`
-}
-
-type PodMetric struct {
-	Pod       string  `json:"pod"`
-	Namespace string  `json:"namespace"`
-	CPU       float64 `json:"cpu_cores"`
-	Memory    float64 `json:"memory_bytes"`
-}
-
-type NodeMetric struct {
-	Node      string  `json:"node"`
-	CPUPct    float64 `json:"cpu_percent"`
-	MemPct    float64 `json:"memory_percent"`
-	DiskPct   float64 `json:"disk_percent"`
-}
-
-type Alert struct {
-	Name     string `json:"name"`
-	Severity string `json:"severity"`
-	Message  string `json:"message"`
-	Since    string `json:"since"`
-}
-
 func main() {
 	port := envOr("PORT", "8082")
+
+	// Init K8s client
+	client, err := newK8sClient()
+	if err != nil {
+		log.Fatalf("Cannot create K8s client: %v", err)
+	}
+
+	// Start incident detector
+	det = detector.New(client)
+	go det.RunLoop(context.Background(), 10*time.Second)
 
 	router := gin.Default()
 
 	router.GET("/health", func(c *gin.Context) {
-		c.JSON(200, gin.H{"status": "healthy", "service": "tagent-monitoring", "prometheus": prometheusURL})
+		c.JSON(200, gin.H{
+			"status":     "healthy",
+			"service":    "tagent-monitoring",
+			"prometheus": prometheusURL,
+			"incidents":  len(det.GetIncidents()),
+		})
 	})
 
+	// Metrics summary (from Prometheus)
 	router.GET("/summary", func(c *gin.Context) {
-		summary := MetricsSummary{}
-
-		// Query Prometheus for cluster CPU
-		cpuResult := queryPrometheus(`100 - (avg(rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)`)
-		if len(cpuResult) > 0 {
-			summary.ClusterCPUPercent = cpuResult[0]
+		summary := gin.H{
+			"cluster_cpu_percent":    queryPromSingle(`100 - (avg(rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)`),
+			"cluster_memory_percent": queryPromSingle(`(1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100`),
+			"pod_metrics":            nil,
+			"node_metrics":           nil,
+			"alerts":                 queryAlerts(),
 		}
-
-		// Query Prometheus for cluster memory
-		memResult := queryPrometheus(`(1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100`)
-		if len(memResult) > 0 {
-			summary.ClusterMemPercent = memResult[0]
-		}
-
-		// Query active alerts
-		summary.Alerts = queryAlerts()
-
 		c.JSON(200, summary)
 	})
 
 	router.GET("/metrics/cpu", func(c *gin.Context) {
-		result := queryPrometheusRaw(`rate(container_cpu_usage_seconds_total{container!=""}[5m])`)
-		c.Data(200, "application/json", result)
+		c.Data(200, "application/json", queryPromRaw(`rate(container_cpu_usage_seconds_total{container!=""}[5m])`))
 	})
 
 	router.GET("/metrics/memory", func(c *gin.Context) {
-		result := queryPrometheusRaw(`container_memory_working_set_bytes{container!=""}`)
-		c.Data(200, "application/json", result)
+		c.Data(200, "application/json", queryPromRaw(`container_memory_working_set_bytes{container!=""}`))
 	})
 
-	log.Printf("Tagent Monitoring Service starting on port %s (Prometheus: %s)", port, prometheusURL)
+	// Incidents detected by the rules engine
+	router.GET("/incidents", func(c *gin.Context) {
+		incidents := det.GetIncidents()
+		c.JSON(200, gin.H{"incidents": incidents, "total": len(incidents)})
+	})
+
+	log.Printf("Tagent Monitoring Service starting on port %s", port)
+	log.Printf("  Prometheus: %s", prometheusURL)
+	log.Printf("  Incident detection: enabled (10s interval)")
+
 	if err := router.Run(":" + port); err != nil {
 		log.Fatalf("Failed to start: %v", err)
 	}
 }
 
-func queryPrometheus(query string) []float64 {
+// ===== K8s Client =====
+
+func newK8sClient() (*kubernetes.Clientset, error) {
+	config, err := rest.InClusterConfig()
+	if err != nil {
+		kubeconfig := os.Getenv("KUBECONFIG")
+		if kubeconfig == "" {
+			home, _ := os.UserHomeDir()
+			kubeconfig = filepath.Join(home, ".kube", "config")
+		}
+		config, err = clientcmd.BuildConfigFromFlags("", kubeconfig)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return kubernetes.NewForConfig(config)
+}
+
+// ===== Prometheus Queries =====
+
+func queryPromSingle(query string) float64 {
 	u := fmt.Sprintf("%s/api/v1/query?query=%s", prometheusURL, url.QueryEscape(query))
 	resp, err := http.Get(u)
 	if err != nil {
-		return nil
+		return 0
 	}
 	defer resp.Body.Close()
 
@@ -109,23 +124,19 @@ func queryPrometheus(query string) []float64 {
 		} `json:"data"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil
+		return 0
 	}
-
-	var values []float64
-	for _, r := range result.Data.Result {
-		if len(r.Value) >= 2 {
-			if v, ok := r.Value[1].(string); ok {
-				var f float64
-				fmt.Sscanf(v, "%f", &f)
-				values = append(values, f)
-			}
+	if len(result.Data.Result) > 0 && len(result.Data.Result[0].Value) >= 2 {
+		if v, ok := result.Data.Result[0].Value[1].(string); ok {
+			var f float64
+			fmt.Sscanf(v, "%f", &f)
+			return f
 		}
 	}
-	return values
+	return 0
 }
 
-func queryPrometheusRaw(query string) []byte {
+func queryPromRaw(query string) []byte {
 	u := fmt.Sprintf("%s/api/v1/query?query=%s", prometheusURL, url.QueryEscape(query))
 	resp, err := http.Get(u)
 	if err != nil {
@@ -136,7 +147,7 @@ func queryPrometheusRaw(query string) []byte {
 	return body
 }
 
-func queryAlerts() []Alert {
+func queryAlerts() []gin.H {
 	u := fmt.Sprintf("%s/api/v1/alerts", prometheusURL)
 	resp, err := http.Get(u)
 	if err != nil {
@@ -158,14 +169,14 @@ func queryAlerts() []Alert {
 		return nil
 	}
 
-	var alerts []Alert
+	var alerts []gin.H
 	for _, a := range result.Data.Alerts {
 		if a.State == "firing" {
-			alerts = append(alerts, Alert{
-				Name:     a.Labels["alertname"],
-				Severity: a.Labels["severity"],
-				Message:  a.Annotations["summary"],
-				Since:    a.ActiveAt,
+			alerts = append(alerts, gin.H{
+				"name":     a.Labels["alertname"],
+				"severity": a.Labels["severity"],
+				"message":  a.Annotations["summary"],
+				"since":    a.ActiveAt,
 			})
 		}
 	}

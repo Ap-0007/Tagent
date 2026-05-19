@@ -1,46 +1,79 @@
 "use client";
 
-import { useState } from "react";
-import { Zap, Play, CheckCircle, XCircle, Clock } from "lucide-react";
-
-const experiments = [
-    { id: "ch1", name: "Pod kill — checkout-api", target: "production/checkout-api", type: "pod-kill", lastRun: "3d ago", lastResult: "pass" },
-    { id: "ch2", name: "Network latency — payment→postgres", target: "production/payment-service", type: "network-delay", lastRun: "1w ago", lastResult: "pass" },
-    { id: "ch3", name: "CPU stress — orders-api", target: "production/orders-api", type: "cpu-stress", lastRun: "2w ago", lastResult: "fail" },
-    { id: "ch4", name: "Kafka broker failure", target: "data/kafka-broker", type: "pod-kill", lastRun: "never", lastResult: "pending" },
-];
+import { useEffect, useState } from "react";
+import { getChaosExperiments, runChaosExperiment, type ChaosExperiment } from "@/lib/api";
+import { Zap, Play, CheckCircle, Clock, Loader2, WifiOff } from "lucide-react";
 
 export default function ChaosPage() {
+    const [experiments, setExperiments] = useState<ChaosExperiment[]>([]);
     const [running, setRunning] = useState<string | null>(null);
+    const [message, setMessage] = useState<string | null>(null);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
 
-    function run(id: string) {
+    async function load() {
+        try {
+            const data = await getChaosExperiments();
+            setExperiments(data.experiments || []);
+            setError(null);
+        } catch (e: any) {
+            setError(e.message);
+        } finally {
+            setLoading(false);
+        }
+    }
+
+    useEffect(() => {
+        load();
+    }, []);
+
+    async function run(id: string) {
         setRunning(id);
-        setTimeout(() => setRunning(null), 3000);
+        setMessage(null);
+        try {
+            const result = await runChaosExperiment(id);
+            setMessage(result.message);
+            await load();
+        } catch (e: any) {
+            setMessage(e.message);
+        } finally {
+            setRunning(null);
+        }
     }
 
     return (
         <div className="flex-1 overflow-y-auto scrollbar">
             <header className="px-6 py-5 border-b border-zinc-800/60">
-                <h1 className="text-lg font-semibold text-zinc-100">Chaos Testing</h1>
-                <p className="text-sm text-zinc-500 mt-0.5">Validate remediation logic with controlled failure simulations</p>
+                <div className="flex items-center justify-between">
+                    <div>
+                        <h1 className="text-lg font-semibold text-zinc-100">Chaos Testing</h1>
+                        <p className="text-sm text-zinc-500 mt-0.5">Backend-driven dry-run failure simulations</p>
+                    </div>
+                    {loading && <Loader2 className="w-4 h-4 text-zinc-500 animate-spin" />}
+                    {error && <span className="flex items-center gap-1 text-[10px] text-amber-400"><WifiOff className="w-3 h-3" />offline</span>}
+                </div>
             </header>
             <div className="px-6 py-5 space-y-3">
-                {experiments.map((e) => (
+                {message && <div className="bg-zinc-900/50 border border-zinc-800 rounded-lg px-4 py-3 text-[12px] text-zinc-300">{message}</div>}
+                {experiments.length === 0 && !loading ? (
+                    <div className="bg-zinc-900/50 border border-zinc-800 rounded-lg px-6 py-12 text-center text-sm text-zinc-500">
+                        {error ? "Start API Gateway to see chaos experiments." : "No chaos experiments returned."}
+                    </div>
+                ) : experiments.map((e) => (
                     <div key={e.id} className="bg-zinc-900/50 border border-zinc-800 rounded-lg p-4">
                         <div className="flex items-center justify-between">
                             <div className="flex items-center gap-3">
                                 <Zap className="w-4 h-4 text-amber-400" />
                                 <div>
                                     <p className="text-[13px] text-zinc-200 font-medium">{e.name}</p>
-                                    <p className="text-[11px] text-zinc-500 font-mono mt-0.5">{e.target} · {e.type}</p>
+                                    <p className="text-[11px] text-zinc-500 font-mono mt-0.5">{e.target} - {e.type}</p>
+                                    <p className="text-[11px] text-zinc-600 mt-0.5">{e.description}</p>
                                 </div>
                             </div>
                             <div className="flex items-center gap-3">
                                 <div className="flex items-center gap-1.5 text-[11px]">
-                                    {e.lastResult === "pass" && <><CheckCircle className="w-3 h-3 text-emerald-400" /><span className="text-emerald-400">pass</span></>}
-                                    {e.lastResult === "fail" && <><XCircle className="w-3 h-3 text-red-400" /><span className="text-red-400">fail</span></>}
-                                    {e.lastResult === "pending" && <><Clock className="w-3 h-3 text-zinc-500" /><span className="text-zinc-500">never run</span></>}
-                                    <span className="text-zinc-600 ml-1">· {e.lastRun}</span>
+                                    {e.last_result !== "never-run" ? <CheckCircle className="w-3 h-3 text-emerald-400" /> : <Clock className="w-3 h-3 text-zinc-500" />}
+                                    <span className={e.last_result !== "never-run" ? "text-emerald-400" : "text-zinc-500"}>{e.last_result}</span>
                                 </div>
                                 <button
                                     onClick={() => run(e.id)}
@@ -53,11 +86,6 @@ export default function ChaosPage() {
                         </div>
                     </div>
                 ))}
-
-                <div className="bg-zinc-900/50 border border-dashed border-zinc-700 rounded-lg p-4 text-center">
-                    <p className="text-[13px] text-zinc-400">+ Create new experiment</p>
-                    <p className="text-[11px] text-zinc-600 mt-0.5">Define pod-kill, network-delay, cpu-stress, or disk-pressure tests</p>
-                </div>
             </div>
         </div>
     );

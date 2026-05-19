@@ -109,12 +109,21 @@ escalation:
 # ===== SECRETS =====
 
 secrets:
-  databaseUrl: ""
+  databaseUrl: "postgresql://tagent:tagent123@tagent-postgres:5432/tagent?sslmode=disable"
   redisUrl: ""
   slackWebhookUrl: ""
   smtpHost: ""
   smtpUser: ""
   smtpPassword: ""
+
+# ===== POSTGRESQL =====
+
+postgres:
+  enabled: true
+  password: "tagent123"
+  persistence:
+    enabled: false
+    size: 5Gi
 
 # ===== INGRESS =====
 

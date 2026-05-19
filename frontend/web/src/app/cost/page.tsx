@@ -1,75 +1,85 @@
 "use client";
 
-import { DollarSign, TrendingDown, TrendingUp, Lightbulb } from "lucide-react";
-
-const services = [
-    { name: "postgres-primary", cost: "$142/mo", trend: "+12%", direction: "up" },
-    { name: "checkout-api", cost: "$89/mo", trend: "-3%", direction: "down" },
-    { name: "payment-service", cost: "$76/mo", trend: "+8%", direction: "up" },
-    { name: "orders-api", cost: "$54/mo", trend: "0%", direction: "flat" },
-    { name: "redis-cache", cost: "$32/mo", trend: "-5%", direction: "down" },
-    { name: "kafka-broker", cost: "$28/mo", trend: "0%", direction: "flat" },
-    { name: "notifications", cost: "$12/mo", trend: "0%", direction: "flat" },
-];
-
-const recommendations = [
-    { title: "Right-size postgres-primary", saving: "$38/mo", desc: "CPU request is 4 cores but P95 usage is 1.8 cores. Reduce to 2 cores." },
-    { title: "Scale down staging cluster nights/weekends", saving: "$120/mo", desc: "Staging has zero traffic 18h/day. Scale to 0 replicas during off-hours." },
-    { title: "Switch redis to spot instances", saving: "$14/mo", desc: "Redis is stateless with persistence. Safe for spot with proper failover." },
-];
+import { useEffect, useState } from "react";
+import { getCostSummary, type CostSummary } from "@/lib/api";
+import { DollarSign, Lightbulb, Loader2, WifiOff } from "lucide-react";
 
 export default function CostPage() {
-    const total = "$433/mo";
+    const [data, setData] = useState<CostSummary | null>(null);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
+
+    useEffect(() => {
+        async function fetchData() {
+            try {
+                const result = await getCostSummary();
+                setData(result);
+                setError(null);
+            } catch (e: any) {
+                setError(e.message);
+            } finally {
+                setLoading(false);
+            }
+        }
+        fetchData();
+    }, []);
 
     return (
         <div className="flex-1 overflow-y-auto scrollbar">
             <header className="px-6 py-5 border-b border-zinc-800/60">
-                <h1 className="text-lg font-semibold text-zinc-100">Cost Dashboard</h1>
-                <p className="text-sm text-zinc-500 mt-0.5">Infrastructure spend and optimization opportunities</p>
+                <div className="flex items-center justify-between">
+                    <div>
+                        <h1 className="text-lg font-semibold text-zinc-100">Cost Dashboard</h1>
+                        <p className="text-sm text-zinc-500 mt-0.5">Backend cost contract from cluster inventory</p>
+                    </div>
+                    {loading && <Loader2 className="w-4 h-4 text-zinc-500 animate-spin" />}
+                    {error && <span className="flex items-center gap-1 text-[10px] text-amber-400"><WifiOff className="w-3 h-3" />offline</span>}
+                </div>
             </header>
             <div className="px-6 py-5 space-y-5">
-                {/* Summary */}
-                <div className="grid grid-cols-3 gap-3">
-                    <Stat icon={DollarSign} label="Monthly Spend" value={total} />
-                    <Stat icon={TrendingUp} label="vs Last Month" value="+4.2%" sub="$18 increase" />
-                    <Stat icon={Lightbulb} label="Potential Savings" value="$172/mo" sub="3 recommendations" />
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <Stat icon={DollarSign} label="Monthly Spend" value={data?.monthly_spend || "-"} />
+                    <Stat icon={Lightbulb} label="Potential Savings" value={data?.potential_savings || "-"} sub={`${data?.recommendations.length || 0} recommendations`} />
+                    <Stat icon={DollarSign} label="Inventory Items" value={String(data?.items.length ?? "-")} />
                 </div>
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                    {/* Per-service cost */}
                     <div className="bg-zinc-900/50 border border-zinc-800 rounded-lg">
-                        <div className="px-5 py-3 border-b border-zinc-800"><h2 className="text-sm font-medium text-zinc-200">Cost by Service</h2></div>
-                        <div className="divide-y divide-zinc-800/50">
-                            {services.map((s) => (
-                                <div key={s.name} className="px-5 py-3 flex items-center justify-between">
-                                    <span className="text-[13px] text-zinc-300 font-mono">{s.name}</span>
-                                    <div className="flex items-center gap-3">
-                                        <span className={`text-[11px] flex items-center gap-0.5 ${s.direction === "up" ? "text-red-400" : s.direction === "down" ? "text-emerald-400" : "text-zinc-500"}`}>
-                                            {s.direction === "up" && <TrendingUp className="w-3 h-3" />}
-                                            {s.direction === "down" && <TrendingDown className="w-3 h-3" />}
-                                            {s.trend}
-                                        </span>
-                                        <span className="text-[13px] text-zinc-200 font-mono w-20 text-right">{s.cost}</span>
+                        <div className="px-5 py-3 border-b border-zinc-800"><h2 className="text-sm font-medium text-zinc-200">Cost Inventory</h2></div>
+                        {!data && !loading ? (
+                            <div className="px-6 py-12 text-center text-sm text-zinc-500">{error ? "Start API Gateway and Discovery Service to see cost inventory." : "No cost inventory returned."}</div>
+                        ) : (
+                            <div className="divide-y divide-zinc-800/50">
+                                {(data?.items || []).map((item) => (
+                                    <div key={`${item.kind}-${item.namespace}-${item.name}`} className="px-5 py-3">
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-[13px] text-zinc-300 font-mono">{item.name}</span>
+                                            <span className="text-[13px] text-zinc-200 font-mono">{item.estimate}</span>
+                                        </div>
+                                        <p className="text-[11px] text-zinc-500 mt-0.5">{item.kind} {item.namespace ? `- ${item.namespace}` : ""} - {item.basis}</p>
                                     </div>
-                                </div>
-                            ))}
-                        </div>
+                                ))}
+                            </div>
+                        )}
                     </div>
 
-                    {/* Recommendations */}
                     <div className="bg-zinc-900/50 border border-zinc-800 rounded-lg">
                         <div className="px-5 py-3 border-b border-zinc-800"><h2 className="text-sm font-medium text-zinc-200">Optimization Recommendations</h2></div>
-                        <div className="divide-y divide-zinc-800/50">
-                            {recommendations.map((r, i) => (
-                                <div key={i} className="px-5 py-3">
-                                    <div className="flex items-center justify-between mb-1">
-                                        <span className="text-[13px] text-zinc-200 font-medium">{r.title}</span>
-                                        <span className="text-[11px] text-emerald-400 font-mono">save {r.saving}</span>
+                        {(data?.recommendations || []).length === 0 ? (
+                            <div className="px-6 py-12 text-center text-sm text-zinc-500">No cost recommendations returned.</div>
+                        ) : (
+                            <div className="divide-y divide-zinc-800/50">
+                                {data!.recommendations.map((r) => (
+                                    <div key={r.title} className="px-5 py-3">
+                                        <div className="flex items-center justify-between mb-1">
+                                            <span className="text-[13px] text-zinc-200 font-medium">{r.title}</span>
+                                            <span className="text-[11px] text-emerald-400 font-mono">{r.saving}</span>
+                                        </div>
+                                        <p className="text-[11px] text-zinc-500">{r.detail}</p>
                                     </div>
-                                    <p className="text-[11px] text-zinc-500">{r.desc}</p>
-                                </div>
-                            ))}
-                        </div>
+                                ))}
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>

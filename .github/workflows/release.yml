@@ -119,16 +119,16 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: "1.21"
+          cache: false
       - name: Build CLI
         env:
           GOOS: ${{ matrix.os }}
           GOARCH: ${{ matrix.arch }}
           CGO_ENABLED: "0"
         run: |
-          cd backend/services/api-gateway
-          go mod tidy
+          cd cli
           go build -ldflags="-s -w -X main.version=${{ github.ref_name }}" \
-            -o ../../../tagent-${{ matrix.os }}-${{ matrix.arch }}${{ matrix.ext }} ./cmd/server
+            -o ../tagent-${{ matrix.os }}-${{ matrix.arch }}${{ matrix.ext }} .
       - name: Upload binary
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
