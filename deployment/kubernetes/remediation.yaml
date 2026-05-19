@@ -30,6 +30,12 @@ spec:
                 configMapKeyRef:
                   name: tagent-config
                   key: REMEDIATION_MODE
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: tagent-secrets
+                  key: database-url
+                  optional: true
           livenessProbe:
             httpGet:
               path: /health

@@ -37,8 +37,14 @@ spec:
             secretKeyRef:
               name: {{ .Release.Name }}-secrets
               key: database-url
-        - name: KAFKA_BROKERS
-          value: "{{ .Release.Name }}-kafka:9092"
+        - name: NIGHT_GUARDIAN_ENABLED
+          value: {{ .Values.nightGuardian.enabled | default "false" | quote }}
+        - name: NIGHT_GUARDIAN_CONFIDENCE
+          value: {{ .Values.nightGuardian.confidence | default "85" | quote }}
+        - name: MONITORING_URL
+          value: "http://{{ .Release.Name }}-monitoring:8082"
+        - name: NOTIFICATION_URL
+          value: "http://{{ .Release.Name }}-notification:8085"
         resources:
           {{- toYaml .Values.remediation.resources | nindent 12 }}
         securityContext:
