@@ -6,10 +6,21 @@ on:
     tags: ["v*"]
   workflow_dispatch:
     inputs:
-      tag:
-        description: "Image tag override"
-        required: false
-        default: ""
+      service:
+        description: "Build specific service (or 'all')"
+        type: choice
+        options:
+          [
+            all,
+            api-gateway,
+            discovery,
+            monitoring,
+            ai-engine,
+            remediation,
+            notification,
+            web,
+          ]
+        default: all
 
 concurrency:
   group: build-${{ github.ref }}
@@ -20,80 +31,195 @@ env:
   ORG: yaswanth111
 
 jobs:
-  meta:
+  # Detect which services changed
+  changes:
     runs-on: ubuntu-latest
     outputs:
-      version: ${{ steps.version.outputs.version }}
-      is_release: ${{ steps.version.outputs.is_release }}
+      api-gateway: ${{ steps.filter.outputs.api-gateway }}
+      discovery: ${{ steps.filter.outputs.discovery }}
+      monitoring: ${{ steps.filter.outputs.monitoring }}
+      ai-engine: ${{ steps.filter.outputs.ai-engine }}
+      remediation: ${{ steps.filter.outputs.remediation }}
+      notification: ${{ steps.filter.outputs.notification }}
+      web: ${{ steps.filter.outputs.web }}
     steps:
       - uses: actions/checkout@v4
-      - id: version
-        run: |
-          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
-            VERSION="${{ github.ref_name }}"
-            echo "version=${VERSION#v}" >> $GITHUB_OUTPUT
-            echo "is_release=true" >> $GITHUB_OUTPUT
-          elif [[ -n "${{ github.event.inputs.tag }}" ]]; then
-            echo "version=${{ github.event.inputs.tag }}" >> $GITHUB_OUTPUT
-            echo "is_release=false" >> $GITHUB_OUTPUT
-          else
-            SHA=$(echo "${{ github.sha }}" | cut -c1-7)
-            echo "version=dev-${SHA}" >> $GITHUB_OUTPUT
-            echo "is_release=false" >> $GITHUB_OUTPUT
-          fi
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            api-gateway:
+              - 'backend/services/api-gateway/**'
+              - 'deployment/docker/api-gateway.Dockerfile'
+            discovery:
+              - 'backend/services/discovery/**'
+              - 'deployment/docker/discovery.Dockerfile'
+            monitoring:
+              - 'backend/services/monitoring/**'
+              - 'deployment/docker/monitoring.Dockerfile'
+            ai-engine:
+              - 'backend/services/ai-engine/**'
+              - 'deployment/docker/ai-engine.Dockerfile'
+            remediation:
+              - 'backend/services/remediation/**'
+              - 'deployment/docker/remediation.Dockerfile'
+            notification:
+              - 'backend/services/notification/**'
+              - 'deployment/docker/notification.Dockerfile'
+            web:
+              - 'frontend/web/**'
+              - 'deployment/docker/web.Dockerfile'
 
-  build:
-    needs: meta
+  build-api-gateway:
+    needs: changes
+    if: needs.changes.outputs.api-gateway == 'true' || github.event.inputs.service == 'all' || github.event.inputs.service == 'api-gateway' || startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - service: api-gateway
-            dockerfile: deployment/docker/api-gateway.Dockerfile
-          - service: discovery
-            dockerfile: deployment/docker/discovery.Dockerfile
-          - service: monitoring
-            dockerfile: deployment/docker/monitoring.Dockerfile
-          - service: ai-engine
-            dockerfile: deployment/docker/ai-engine.Dockerfile
-          - service: remediation
-            dockerfile: deployment/docker/remediation.Dockerfile
-          - service: notification
-            dockerfile: deployment/docker/notification.Dockerfile
-          - service: web
-            dockerfile: deployment/docker/web.Dockerfile
     steps:
       - uses: actions/checkout@v4
-
       - uses: docker/setup-qemu-action@v3
-
       - uses: docker/setup-buildx-action@v3
-
       - uses: docker/login-action@v3
         with:
           username: ${{ env.ORG }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-      - name: Build tags
-        id: tags
-        run: |
-          IMAGE="${{ env.ORG }}/tagent-${{ matrix.service }}"
-          TAGS="${IMAGE}:${{ needs.meta.outputs.version }}"
-          if [[ "${{ needs.meta.outputs.is_release }}" == "true" ]]; then
-            TAGS="${TAGS},${IMAGE}:latest"
-          fi
-          if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
-            TAGS="${TAGS},${IMAGE}:latest"
-          fi
-          echo "tags=${TAGS}" >> $GITHUB_OUTPUT
-
-      - uses: docker/build-push-action@v7
+      - uses: docker/build-push-action@v5
         with:
           context: .
-          file: ${{ matrix.dockerfile }}
+          file: deployment/docker/api-gateway.Dockerfile
           push: true
           platforms: linux/amd64,linux/arm64
-          tags: ${{ steps.tags.outputs.tags }}
-          cache-from: type=gha,scope=${{ matrix.service }}
-          cache-to: type=gha,scope=${{ matrix.service }},mode=max
+          tags: ${{ env.ORG }}/tagent-api-gateway:latest
+          cache-from: type=gha,scope=api-gateway
+          cache-to: type=gha,scope=api-gateway,mode=max
+
+  build-discovery:
+    needs: changes
+    if: needs.changes.outputs.discovery == 'true' || github.event.inputs.service == 'all' || github.event.inputs.service == 'discovery' || startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ env.ORG }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: deployment/docker/discovery.Dockerfile
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: ${{ env.ORG }}/tagent-discovery:latest
+          cache-from: type=gha,scope=discovery
+          cache-to: type=gha,scope=discovery,mode=max
+
+  build-monitoring:
+    needs: changes
+    if: needs.changes.outputs.monitoring == 'true' || github.event.inputs.service == 'all' || github.event.inputs.service == 'monitoring' || startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ env.ORG }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: deployment/docker/monitoring.Dockerfile
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: ${{ env.ORG }}/tagent-monitoring:latest
+          cache-from: type=gha,scope=monitoring
+          cache-to: type=gha,scope=monitoring,mode=max
+
+  build-ai-engine:
+    needs: changes
+    if: needs.changes.outputs.ai-engine == 'true' || github.event.inputs.service == 'all' || github.event.inputs.service == 'ai-engine' || startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ env.ORG }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: deployment/docker/ai-engine.Dockerfile
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: ${{ env.ORG }}/tagent-ai-engine:latest
+          cache-from: type=gha,scope=ai-engine
+          cache-to: type=gha,scope=ai-engine,mode=max
+
+  build-remediation:
+    needs: changes
+    if: needs.changes.outputs.remediation == 'true' || github.event.inputs.service == 'all' || github.event.inputs.service == 'remediation' || startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ env.ORG }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: deployment/docker/remediation.Dockerfile
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: ${{ env.ORG }}/tagent-remediation:latest
+          cache-from: type=gha,scope=remediation
+          cache-to: type=gha,scope=remediation,mode=max
+
+  build-notification:
+    needs: changes
+    if: needs.changes.outputs.notification == 'true' || github.event.inputs.service == 'all' || github.event.inputs.service == 'notification' || startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ env.ORG }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: deployment/docker/notification.Dockerfile
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: ${{ env.ORG }}/tagent-notification:latest
+          cache-from: type=gha,scope=notification
+          cache-to: type=gha,scope=notification,mode=max
+
+  build-web:
+    needs: changes
+    if: needs.changes.outputs.web == 'true' || github.event.inputs.service == 'all' || github.event.inputs.service == 'web' || startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ env.ORG }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: deployment/docker/web.Dockerfile
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: ${{ env.ORG }}/tagent-web:latest
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,scope=web,mode=max
