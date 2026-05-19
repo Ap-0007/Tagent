@@ -1,10 +1,19 @@
 /**
  * Tagent API Client
  * Calls the API Gateway which proxies to backend services.
- * Set NEXT_PUBLIC_API_URL in environment (defaults to http://localhost:8080).
+ * Auto-detects API URL: same host as the browser, port 8080.
  */
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+function getApiBase(): string {
+    if (typeof window === "undefined") {
+        // Server-side rendering — use internal service name
+        return process.env.NEXT_PUBLIC_API_URL || "http://tagent-api-gateway:8080";
+    }
+    // Browser — use same host as current page, port 8080
+    return process.env.NEXT_PUBLIC_API_URL || `http://${window.location.hostname}:8080`;
+}
+
+const API_BASE = getApiBase();
 
 export class ApiError extends Error {
     status: number;
