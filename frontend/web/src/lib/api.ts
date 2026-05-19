@@ -1,19 +1,10 @@
 /**
  * Tagent API Client
- * Calls the API Gateway which proxies to backend services.
- * Auto-detects API URL: same host as the browser, port 8080.
+ * Uses Next.js API proxy — browser calls /api/proxy/... on same origin.
+ * No CORS, no localhost issues, no port-forward for API Gateway needed.
  */
 
-function getApiBase(): string {
-    if (typeof window === "undefined") {
-        // Server-side rendering — use internal service name
-        return process.env.NEXT_PUBLIC_API_URL || "http://tagent-api-gateway:8080";
-    }
-    // Browser — use same host as current page, port 8080
-    return process.env.NEXT_PUBLIC_API_URL || `http://${window.location.hostname}:8080`;
-}
-
-const API_BASE = getApiBase();
+const API_PREFIX = "/api/proxy";
 
 export class ApiError extends Error {
     status: number;
@@ -24,7 +15,9 @@ export class ApiError extends Error {
 }
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
-    const url = `${API_BASE}${path}`;
+    // Convert /api/v1/resources → /api/proxy/resources
+    const proxyPath = path.replace("/api/v1/", "");
+    const url = `${API_PREFIX}/${proxyPath}`;
     try {
         const res = await fetch(url, {
             ...options,
@@ -419,5 +412,5 @@ export interface HealthResponse {
 }
 
 export async function getHealth(): Promise<HealthResponse> {
-    return request<HealthResponse>("/health");
+    return request<HealthResponse>("/api/v1/health");
 }
