@@ -5,9 +5,8 @@
  */
 
 function getWsUrl(): string {
-  if (typeof window === "undefined") return "ws://localhost:8080/ws";
-  const base = process.env.NEXT_PUBLIC_API_URL || `http://${window.location.hostname}:8080`;
-  return base.replace("http://", "ws://").replace("https://", "wss://") + "/ws";
+  // WebSocket disabled until ingress is configured
+  return "";
 }
 
 const WS_URL = getWsUrl();
@@ -30,6 +29,7 @@ class TagentWebSocket {
 
   connect() {
     if (typeof window === "undefined") return; // SSR guard
+    if (!WS_URL) return; // WebSocket disabled
 
     try {
       this.ws = new WebSocket(WS_URL);
