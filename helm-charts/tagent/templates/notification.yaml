@@ -59,13 +59,6 @@ spec:
           value: {{ .Values.notification.smtpFrom | default "" | quote }}
         - name: SMTP_TO
           value: {{ .Values.notification.smtpTo | default "" | quote }}
-              optional: true
-        - name: SMTP_PASSWORD
-          valueFrom:
-            secretKeyRef:
-              name: {{ .Release.Name }}-secrets
-              key: smtp-password
-              optional: true
         resources:
           {{- toYaml .Values.notification.resources | nindent 12 }}
         securityContext:
