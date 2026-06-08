@@ -6,8 +6,10 @@ Answers questions about your Kubernetes cluster using:
 """
 
 import os
+import asyncio
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from prometheus_fastapi_instrumentator import Instrumentator
 from app.routers import chat, analysis, rca
 from app.routers import knowledge as knowledge_router
 from app.routers import risks as risks_router
@@ -23,7 +25,6 @@ app = FastAPI(
 )
 
 # Prometheus metrics (auto-instruments all endpoints)
-from prometheus_fastapi_instrumentator import Instrumentator
 Instrumentator(
     should_group_status_codes=True,
     should_ignore_untemplated=True,
@@ -54,8 +55,6 @@ async def health():
 
 
 # Background task: collect telemetry snapshots every 15 seconds for predictive detection
-import asyncio
-
 _collector_task = None
 
 @app.on_event("startup")

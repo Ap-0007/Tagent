@@ -15,6 +15,7 @@ import os
 import time
 import traceback
 from pathlib import Path
+from typing import Optional
 
 from app.plugins.sdk import (
     DetectorPlugin,

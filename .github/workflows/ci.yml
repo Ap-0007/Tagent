@@ -50,7 +50,7 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: 22
-      - run: npm install
+      - run: npm install --legacy-peer-deps
         working-directory: frontend/web
       - run: npm run type-check
         working-directory: frontend/web
