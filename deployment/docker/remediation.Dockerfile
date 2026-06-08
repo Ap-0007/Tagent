@@ -1,14 +1,34 @@
-FROM golang:1.26-alpine AS builder
-WORKDIR /app
+# ===== Stage 1: Build =====
+FROM golang:1.25-alpine AS builder
+
+RUN apk add --no-cache git ca-certificates tzdata
+
+WORKDIR /build
 COPY backend/services/remediation/ ./services/remediation/
 COPY backend/shared/ ./shared/
-WORKDIR /app/services/remediation
-RUN sed -i 's|../../../shared/pkg/events|../../shared/pkg/events|g' go.mod
-RUN go mod tidy
-RUN CGO_ENABLED=0 go build -o /tagent-remediation ./cmd/server
 
-FROM alpine:3.23
-RUN apk --no-cache add ca-certificates
-COPY --from=builder /tagent-remediation /usr/local/bin/
+WORKDIR /build/services/remediation
+RUN sed -i 's|../../../shared/pkg/events|../../shared/pkg/events|g' go.mod 2>/dev/null || true
+RUN go mod tidy && \
+    CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+    -ldflags="-s -w -extldflags '-static'" \
+    -o /tagent-remediation ./cmd/server
+
+# ===== Stage 2: Production (distroless) =====
+FROM gcr.io/distroless/static-debian12:nonroot
+
+LABEL org.opencontainers.image.title="Tagent Remediation" \
+    org.opencontainers.image.description="AI-Powered Kubernetes SRE Platform — Remediation Service" \
+    org.opencontainers.image.vendor="Tagent" \
+    org.opencontainers.image.source="https://github.com/Tagent-dev/Tagent" \
+    org.opencontainers.image.licenses="Apache-2.0"
+
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+COPY --from=builder /usr/share/zoneinfo /usr/share/zoneinfo
+COPY --from=builder /tagent-remediation /tagent-remediation
+
+USER nonroot:nonroot
+
 EXPOSE 8084
-CMD ["tagent-remediation"]
+
+ENTRYPOINT ["/tagent-remediation"]
