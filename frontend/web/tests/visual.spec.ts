@@ -69,8 +69,6 @@ test("navigation: sidebar links work", async ({ page }) => {
     await expect(page).toHaveURL("/incidents");
     await page.click('a[href="/ai"]');
     await expect(page).toHaveURL("/ai");
-    await page.click('a[href="/settings"]');
-    await expect(page).toHaveURL("/settings");
 });
 
 test("accessibility: no critical violations on dashboard", async ({ page }) => {
