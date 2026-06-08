@@ -9,9 +9,11 @@ import (
 	"net/http"
 	"net/smtp"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/tagent-ai/tagent/backend/services/notification/internal/escalation"
 )
 
 type NotifyRequest struct {
@@ -144,6 +146,94 @@ func main() {
 
 	// Register integration routes
 	RegisterIntegrationRoutes(router)
+
+	// ===== Escalation Chain =====
+	phoneDelay, _ := strconv.Atoi(envOr("ESCALATION_PHONE_DELAY_MIN", "3"))
+	autoFixDelay, _ := strconv.Atoi(envOr("ESCALATION_AUTO_FIX_DELAY_MIN", "10"))
+
+	escConfig := escalation.Config{
+		Enabled:          envOr("ESCALATION_ENABLED", "false") == "true",
+		PrimaryPhone:     os.Getenv("ALERT_PHONE_NUMBERS"),
+		PrimaryEmail:     smtpTo,
+		PrimarySlackUser: os.Getenv("ESCALATION_SLACK_USER"),
+		SecondaryPhone:   os.Getenv("ESCALATION_SECONDARY_PHONE"),
+		SecondaryEmail:   os.Getenv("ESCALATION_SECONDARY_EMAIL"),
+		PhoneDelayMin:    phoneDelay,
+		AutoFixDelayMin:  autoFixDelay,
+		QuietStart:       envOr("ESCALATION_QUIET_START", "22:00"),
+		QuietEnd:         envOr("ESCALATION_QUIET_END", "06:00"),
+		MinSeverity:      envOr("ESCALATION_MIN_SEVERITY", "high"),
+		SlackWebhookURL:  slackWebhookURL,
+		TwilioAccountSID: os.Getenv("TWILIO_ACCOUNT_SID"),
+		TwilioAuthToken:  os.Getenv("TWILIO_AUTH_TOKEN"),
+		TwilioFromNumber: os.Getenv("TWILIO_FROM_NUMBER"),
+		SmtpHost:         smtpHost,
+		SmtpPort:         smtpPort,
+		SmtpUser:         smtpUser,
+		SmtpPassword:     smtpPassword,
+	}
+	escEngine := escalation.New(escConfig)
+	go escEngine.RunLoop()
+
+	// Escalation endpoints
+	router.GET("/escalation/config", func(c *gin.Context) {
+		c.JSON(200, escEngine.GetConfig())
+	})
+
+	router.PUT("/escalation/config", func(c *gin.Context) {
+		var cfg escalation.Config
+		if err := c.ShouldBindJSON(&cfg); err != nil {
+			c.JSON(400, gin.H{"error": err.Error()})
+			return
+		}
+		escEngine.UpdateConfig(cfg)
+		c.JSON(200, gin.H{"status": "updated", "config": cfg})
+	})
+
+	router.POST("/escalation/trigger", func(c *gin.Context) {
+		var req struct {
+			IncidentID string `json:"incident_id" binding:"required"`
+			Title      string `json:"title" binding:"required"`
+			Severity   string `json:"severity" binding:"required"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(400, gin.H{"error": err.Error()})
+			return
+		}
+		esc := escEngine.Trigger(req.IncidentID, req.Title, req.Severity)
+		if esc == nil {
+			c.JSON(200, gin.H{"status": "skipped", "message": "Escalation not triggered (disabled or severity below threshold)"})
+			return
+		}
+		c.JSON(200, gin.H{"status": "triggered", "escalation": esc})
+	})
+
+	router.POST("/escalation/acknowledge", func(c *gin.Context) {
+		var req struct {
+			IncidentID string `json:"incident_id" binding:"required"`
+			By         string `json:"by" binding:"required"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(400, gin.H{"error": err.Error()})
+			return
+		}
+		ok := escEngine.Acknowledge(req.IncidentID, req.By)
+		if !ok {
+			c.JSON(404, gin.H{"error": "no active escalation for this incident"})
+			return
+		}
+		c.JSON(200, gin.H{"status": "acknowledged", "incident_id": req.IncidentID, "by": req.By})
+	})
+
+	router.GET("/escalation/active", func(c *gin.Context) {
+		active := escEngine.GetActive()
+		c.JSON(200, gin.H{"escalations": active, "total": len(active)})
+	})
+
+	router.GET("/escalation/history", func(c *gin.Context) {
+		history := escEngine.GetHistory()
+		c.JSON(200, gin.H{"escalations": history, "total": len(history)})
+	})
 
 	router.GET("/health", func(c *gin.Context) {
 		slackOk := slackWebhookURL != "" || os.Getenv("SLACK_BOT_TOKEN") != ""

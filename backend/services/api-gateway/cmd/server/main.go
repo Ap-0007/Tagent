@@ -117,6 +117,14 @@ func main() {
 	router.POST("/api/v1/notify/test/slack", proxyPost(notificationURL, "/test/slack"))
 	router.POST("/api/v1/notify/test/email", proxyPost(notificationURL, "/test/email"))
 
+	// ===== Escalation Chain =====
+	router.GET("/api/v1/escalation/config", proxyGet(notificationURL, "/escalation/config"))
+	router.PUT("/api/v1/escalation/config", proxyPut(notificationURL, "/escalation/config"))
+	router.POST("/api/v1/escalation/trigger", proxyPost(notificationURL, "/escalation/trigger"))
+	router.POST("/api/v1/escalation/acknowledge", proxyPost(notificationURL, "/escalation/acknowledge"))
+	router.GET("/api/v1/escalation/active", proxyGet(notificationURL, "/escalation/active"))
+	router.GET("/api/v1/escalation/history", proxyGet(notificationURL, "/escalation/history"))
+
 	// ===== Integrations (served by Notification Service) =====
 	router.GET("/api/v1/integrations", proxyGet(notificationURL, "/integrations"))
 	router.GET("/api/v1/integrations/health", proxyGet(notificationURL, "/integrations/health"))

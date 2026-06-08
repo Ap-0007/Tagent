@@ -764,3 +764,93 @@ export async function analyzeServiceRisk(service: string, namespace?: string): P
         body: JSON.stringify({ service, namespace }),
     });
 }
+
+// ===== Escalation Chain =====
+
+export interface EscalationConfig {
+    enabled: boolean;
+    primary_phone: string;
+    primary_email: string;
+    primary_slack_user: string;
+    secondary_phone: string;
+    secondary_email: string;
+    phone_delay_min: number;
+    auto_fix_delay_min: number;
+    quiet_start: string;
+    quiet_end: string;
+    min_severity: string;
+    slack_webhook_url: string;
+    twilio_account_sid: string;
+    twilio_auth_token: string;
+    twilio_from_number: string;
+    smtp_host: string;
+    smtp_port: string;
+    smtp_user: string;
+    smtp_password: string;
+}
+
+export interface EscalationStep {
+    level: number;
+    channel: string;
+    status: string;
+    target: string;
+    sent_at: string;
+    message: string;
+    error_msg?: string;
+}
+
+export interface ActiveEscalation {
+    id: string;
+    incident_id: string;
+    incident_title: string;
+    severity: string;
+    status: string;
+    started_at: string;
+    acknowledged_at?: string;
+    acknowledged_by?: string;
+    steps: EscalationStep[];
+    current_level: number;
+}
+
+export interface EscalationActiveResponse {
+    escalations: ActiveEscalation[];
+    total: number;
+}
+
+export interface EscalationHistoryResponse {
+    escalations: ActiveEscalation[];
+    total: number;
+}
+
+export async function getEscalationConfig(): Promise<EscalationConfig> {
+    return request<EscalationConfig>("/api/v1/escalation/config");
+}
+
+export async function updateEscalationConfig(config: Partial<EscalationConfig>): Promise<{ status: string; config: EscalationConfig }> {
+    return request<{ status: string; config: EscalationConfig }>("/api/v1/escalation/config", {
+        method: "PUT",
+        body: JSON.stringify(config),
+    });
+}
+
+export async function triggerEscalation(incidentId: string, title: string, severity: string): Promise<{ status: string; escalation?: ActiveEscalation }> {
+    return request<{ status: string; escalation?: ActiveEscalation }>("/api/v1/escalation/trigger", {
+        method: "POST",
+        body: JSON.stringify({ incident_id: incidentId, title, severity }),
+    });
+}
+
+export async function acknowledgeEscalation(incidentId: string, by: string): Promise<{ status: string }> {
+    return request<{ status: string }>("/api/v1/escalation/acknowledge", {
+        method: "POST",
+        body: JSON.stringify({ incident_id: incidentId, by }),
+    });
+}
+
+export async function getActiveEscalations(): Promise<EscalationActiveResponse> {
+    return request<EscalationActiveResponse>("/api/v1/escalation/active");
+}
+
+export async function getEscalationHistory(): Promise<EscalationHistoryResponse> {
+    return request<EscalationHistoryResponse>("/api/v1/escalation/history");
+}

@@ -101,10 +101,12 @@ nightGuardian:
 # ===== ESCALATION =====
 
 escalation:
+  enabled: false
   phoneDelayMin: "3"
   autoFixDelayMin: "10"
   quietStart: "22:00"
   quietEnd: "06:00"
+  minSeverity: "high"
 
 # ===== SECRETS =====
 
