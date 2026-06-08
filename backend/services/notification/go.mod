@@ -1,6 +1,6 @@
 module github.com/tagent-ai/tagent/backend/services/notification
 
-go 1.25
+go 1.26
 
 require (
 	github.com/gin-gonic/gin v1.9.1
