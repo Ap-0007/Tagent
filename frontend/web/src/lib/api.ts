@@ -854,3 +854,37 @@ export async function getActiveEscalations(): Promise<EscalationActiveResponse> 
 export async function getEscalationHistory(): Promise<EscalationHistoryResponse> {
     return request<EscalationHistoryResponse>("/api/v1/escalation/history");
 }
+
+// ===== Event Stream (Kafka) =====
+
+export interface StreamEvent {
+    type: string;
+    source: string;
+    title: string;
+    detail: string;
+    severity: string;
+    timestamp: string;
+}
+
+export interface EventsResponse {
+    events: StreamEvent[];
+    total: number;
+}
+
+export async function getRecentEvents(): Promise<EventsResponse> {
+    return request<EventsResponse>("/api/v1/events/recent");
+}
+
+// ===== Cache (Redis) =====
+
+export interface CacheStats {
+    connected: boolean;
+    total_keys?: number;
+    active_sessions?: number;
+    memory_used?: string;
+    memory_peak?: string;
+}
+
+export async function getCacheStats(): Promise<CacheStats> {
+    return request<CacheStats>("/api/v1/cache/stats");
+}

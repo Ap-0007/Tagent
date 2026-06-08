@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -10,9 +11,11 @@ import (
 	"net/smtp"
 	"os"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/tagent-ai/tagent/backend/shared/pkg/events"
 	"github.com/tagent-ai/tagent/backend/services/notification/internal/escalation"
 )
 
@@ -258,9 +261,94 @@ func main() {
 		c.JSON(200, result)
 	})
 
+	// Recent events from Kafka (for UI event feed)
+	var recentEvents []gin.H
+	var recentMu sync.RWMutex
+
+	// Store recent events from Kafka consumers
+	addRecentEvent := func(eventType, source, title, detail, severity string) {
+		recentMu.Lock()
+		defer recentMu.Unlock()
+		recentEvents = append([]gin.H{{
+			"type":      eventType,
+			"source":    source,
+			"title":     title,
+			"detail":    detail,
+			"severity":  severity,
+			"timestamp": time.Now().UTC().Format(time.RFC3339),
+		}}, recentEvents...)
+		if len(recentEvents) > 100 {
+			recentEvents = recentEvents[:100]
+		}
+	}
+	// Make it available to Kafka consumers below
+	_ = addRecentEvent
+
+	router.GET("/events/recent", func(c *gin.Context) {
+		recentMu.RLock()
+		defer recentMu.RUnlock()
+		events := recentEvents
+		if events == nil {
+			events = []gin.H{}
+		}
+		c.JSON(200, gin.H{"events": events, "total": len(events)})
+	})
+
 	log.Printf("Tagent Notification Service starting on port %s", port)
 	log.Printf("  Slack: %v (webhook configured: %v)", slackWebhookURL != "", slackWebhookURL != "")
 	log.Printf("  Email: %v (host: %s, from: %s, to: %s)", smtpHost != "", smtpHost, smtpFrom, smtpTo)
+
+	// ===== Kafka Consumer: auto-notify + auto-escalate on incident events =====
+	go func() {
+		consumer := events.NewConsumer(events.TopicIncidentDetected, "notification-service")
+		defer consumer.Close()
+
+		consumer.Consume(context.Background(), func(ctx context.Context, event events.Event) error {
+			// Parse incident payload
+			payloadBytes, _ := json.Marshal(event.Payload)
+			var inc events.IncidentEvent
+			json.Unmarshal(payloadBytes, &inc)
+
+			log.Printf("[kafka] Received incident event: %s — %s (%s)", inc.IncidentID, inc.Title, inc.Severity)
+
+			// Send notification (Slack + Email)
+			title := fmt.Sprintf("[%s] %s", inc.Severity, inc.Title)
+			message := fmt.Sprintf("Incident %s detected.\nService: %s/%s\nRoot Cause: %s",
+				inc.IncidentID, inc.Namespace, inc.Service, inc.RootCause)
+
+			sendSlack(title, message, inc.Severity, "")
+			sendEmail(title, message, inc.Severity, "")
+
+			// Auto-trigger escalation for high/critical
+			if inc.Severity == "critical" || inc.Severity == "high" {
+				escEngine.Trigger(inc.IncidentID, inc.Title, inc.Severity)
+			}
+
+			return nil
+		})
+	}()
+
+	// Also consume remediation events for audit notifications
+	go func() {
+		consumer := events.NewConsumer(events.TopicRemediationCompleted, "notification-remediation")
+		defer consumer.Close()
+
+		consumer.Consume(context.Background(), func(ctx context.Context, event events.Event) error {
+			payloadBytes, _ := json.Marshal(event.Payload)
+			var rem events.RemediationEvent
+			json.Unmarshal(payloadBytes, &rem)
+
+			log.Printf("[kafka] Received remediation event: %s on %s — %s", rem.Action, rem.Target, rem.Status)
+
+			// Notify about completed remediations
+			if rem.Status == "success" && !rem.DryRun {
+				title := fmt.Sprintf("✅ Remediation: %s on %s", rem.Action, rem.Target)
+				sendSlack(title, rem.Message, "low", "")
+			}
+
+			return nil
+		})
+	}()
 
 	if err := router.Run(":" + port); err != nil {
 		log.Fatalf("Failed to start: %v", err)

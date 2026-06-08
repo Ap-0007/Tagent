@@ -2,16 +2,19 @@
 
 Flow:
 1. User asks a question
-2. We fetch current cluster state (pods, nodes, incidents, metrics)
-3. We inject that data as context into the LLM prompt
-4. LLM answers based ONLY on the real data — no hallucination
-5. Return the answer
+2. Check Redis cache for identical question
+3. If cache miss: fetch current cluster state (pods, nodes, incidents, metrics)
+4. Inject that data as context into the LLM prompt
+5. LLM answers based ONLY on the real data — no hallucination
+6. Cache the response in Redis (60s TTL)
+7. Return the answer
 """
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from app.providers import OllamaProvider
 from app.context import fetch_cluster_context
+from app import cache as redis_cache
 
 router = APIRouter()
 provider = OllamaProvider()
@@ -53,15 +56,30 @@ async def chat(request: ChatRequest):
             detail="Local LLM (Ollama) is not reachable. Make sure Ollama is running."
         )
 
-    # Fetch real cluster data
-    context = await fetch_cluster_context()
+    # Fetch real cluster data (with Redis cache — 15s TTL)
+    context = await redis_cache.get_cached_context()
+    if not context:
+        context = await fetch_cluster_context()
+        await redis_cache.set_cached_context(context, ttl=15)
 
     # Build the full prompt with real data injected
     system = SYSTEM_PROMPT.format(context=context)
     prompt = request.message
 
+    # Check Redis cache for identical question
+    cached = await redis_cache.get_cached_chat(prompt, system)
+    if cached:
+        return ChatResponse(
+            response=cached,
+            model=provider.model,
+            context_source="cached",
+        )
+
     # Ask the local LLM
     answer = await provider.chat(prompt=prompt, system=system)
+
+    # Cache the response (60 second TTL)
+    await redis_cache.set_cached_chat(prompt, system, answer, ttl=60)
 
     return ChatResponse(
         response=answer,

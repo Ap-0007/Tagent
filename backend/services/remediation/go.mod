@@ -5,10 +5,13 @@ go 1.21
 require (
 	github.com/gin-gonic/gin v1.9.1
 	github.com/jackc/pgx/v5 v5.5.5
+	github.com/tagent-ai/tagent/backend/shared/pkg/events v0.0.0
 	k8s.io/api v0.29.0
 	k8s.io/apimachinery v0.29.0
 	k8s.io/client-go v0.29.0
 )
+
+replace github.com/tagent-ai/tagent/backend/shared/pkg/events => ../../../shared/pkg/events
 
 require (
 	github.com/bytedance/sonic v1.9.1 // indirect

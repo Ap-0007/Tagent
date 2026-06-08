@@ -10,7 +10,9 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/tagent-ai/tagent/backend/services/api-gateway/internal/cache"
 	"github.com/tagent-ai/tagent/backend/services/api-gateway/internal/handlers"
+	"github.com/tagent-ai/tagent/backend/services/api-gateway/internal/middleware"
 	"github.com/tagent-ai/tagent/backend/services/api-gateway/internal/ws"
 )
 
@@ -48,10 +50,72 @@ func main() {
 
 	// Health
 	router.GET("/health", func(c *gin.Context) {
-		c.JSON(200, gin.H{"status": "healthy", "service": "tagent-api-gateway", "version": "0.2.0", "ws_clients": wsHub.ClientCount()})
+		c.JSON(200, gin.H{"status": "healthy", "service": "tagent-api-gateway", "version": "0.2.0", "ws_clients": wsHub.ClientCount(), "redis": cache.IsConnected()})
 	})
 	router.GET("/ready", func(c *gin.Context) {
 		c.JSON(200, gin.H{"status": "ready"})
+	})
+
+	// ===== Redis Init =====
+	redisOk := cache.Init()
+	if redisOk {
+		log.Printf("  Redis:       connected")
+	} else {
+		log.Printf("  Redis:       disabled (caching + rate limiting off)")
+	}
+
+	// ===== Rate Limiting (Redis-backed) =====
+	router.Use(middleware.RateLimit(middleware.DefaultRateLimitConfig()))
+
+	// ===== Response Caching (Redis-backed, 15s TTL for GET requests) =====
+	router.Use(middleware.ResponseCache(middleware.DefaultCacheConfig()))
+
+	// ===== Redis Stats Endpoint =====
+	router.GET("/api/v1/cache/stats", func(c *gin.Context) {
+		c.JSON(200, cache.Stats(c.Request.Context()))
+	})
+
+	// ===== Session Endpoints =====
+	router.POST("/api/v1/sessions", func(c *gin.Context) {
+		var req struct {
+			UserID   string `json:"user_id" binding:"required"`
+			UserName string `json:"user_name" binding:"required"`
+			Email    string `json:"email"`
+			Role     string `json:"role"`
+			IsAdmin  bool   `json:"is_admin"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(400, gin.H{"error": err.Error()})
+			return
+		}
+		session := cache.Session{
+			UserID:    req.UserID,
+			UserName:  req.UserName,
+			Email:     req.Email,
+			Role:      req.Role,
+			IsAdmin:   req.IsAdmin,
+			IPAddress: c.ClientIP(),
+		}
+		sessionID, err := cache.CreateSession(c.Request.Context(), session)
+		if err != nil {
+			c.JSON(500, gin.H{"error": "failed to create session", "detail": err.Error()})
+			return
+		}
+		c.JSON(201, gin.H{"session_id": sessionID, "expires_in": "24h"})
+	})
+
+	router.GET("/api/v1/sessions/:id", func(c *gin.Context) {
+		session, err := cache.GetSession(c.Request.Context(), c.Param("id"))
+		if err != nil {
+			c.JSON(404, gin.H{"error": "session not found or expired"})
+			return
+		}
+		c.JSON(200, session)
+	})
+
+	router.DELETE("/api/v1/sessions/:id", func(c *gin.Context) {
+		cache.DeleteSession(c.Request.Context(), c.Param("id"))
+		c.JSON(200, gin.H{"status": "deleted"})
 	})
 
 	// ===== Database & User Management =====
@@ -269,6 +333,9 @@ func main() {
 
 	// ===== Audit (reads from remediation history) =====
 	router.GET("/api/v1/audit", proxyGet(remediationURL, "/audit"))
+
+	// ===== Events Stream (from Notification Service Kafka consumer) =====
+	router.GET("/api/v1/events/recent", proxyGet(notificationURL, "/events/recent"))
 
 	// ===== Logs (from Discovery Service — reads pod logs via K8s API) =====
 	router.GET("/api/v1/logs", proxyGetWithQuery(discoveryURL, "/logs"))

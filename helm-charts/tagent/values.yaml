@@ -112,11 +112,20 @@ escalation:
 
 secrets:
   databaseUrl: "postgresql://tagent:tagent123@tagent-postgres:5432/tagent?sslmode=disable"
-  redisUrl: ""
+  redisUrl: "redis://tagent-redis:6379"
+  kafkaBrokers: "tagent-kafka:9092"
   slackWebhookUrl: ""
   smtpHost: ""
   smtpUser: ""
   smtpPassword: ""
+
+# ===== KAFKA =====
+
+kafka:
+  enabled: true
+  persistence:
+    enabled: false
+    size: 5Gi
 
 # ===== POSTGRESQL =====
 

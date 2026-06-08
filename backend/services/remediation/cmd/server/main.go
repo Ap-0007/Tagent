@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/tagent-ai/tagent/backend/shared/pkg/events"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
@@ -82,6 +83,7 @@ var (
 	mode           string
 	guard          *guardian.Guardian
 	store          *Store
+	publisher      *events.Publisher
 	guardianConfig GuardianConfig
 	history        []ActionResult
 	guardianRuns   []GuardianRun
@@ -97,6 +99,9 @@ func main() {
 	realClient := mustK8sClient()
 	client = realClient
 	store = initStore(context.Background(), envOr("DATABASE_URL", ""))
+
+	// Init Kafka event publisher
+	publisher = events.NewPublisher("remediation")
 
 	// Night Guardian config
 	guardianEnabled := envOr("NIGHT_GUARDIAN_ENABLED", "false") == "true"
@@ -433,6 +438,18 @@ func recordAction(ctx context.Context, result ActionResult) {
 	stateMu.Unlock()
 	if store != nil {
 		store.SaveAuditLog(ctx, result)
+	}
+	// Publish to Kafka event bus
+	if publisher != nil {
+		_ = publisher.PublishRemediation(ctx, events.TopicRemediationCompleted, events.RemediationEvent{
+			Action:    result.Action,
+			Target:    result.Target,
+			Namespace: strings.Split(result.Target, "/")[0],
+			Status:    result.Status,
+			Message:   result.Message,
+			DryRun:    result.DryRun,
+			Reason:    result.Reason,
+		})
 	}
 	log.Printf("AUDIT: action=%s target=%s status=%s dry_run=%v", result.Action, result.Target, result.Status, result.DryRun)
 }

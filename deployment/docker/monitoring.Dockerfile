@@ -1,6 +1,9 @@
 FROM golang:1.26-alpine AS builder
 WORKDIR /app
-COPY backend/services/monitoring/ .
+COPY backend/services/monitoring/ ./services/monitoring/
+COPY backend/shared/ ./shared/
+WORKDIR /app/services/monitoring
+RUN sed -i 's|../../../shared/pkg/events|../../shared/pkg/events|g' go.mod
 RUN go mod tidy
 RUN CGO_ENABLED=0 go build -o /tagent-monitoring ./cmd/server
 

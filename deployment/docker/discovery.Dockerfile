@@ -1,6 +1,8 @@
 FROM golang:1.26-alpine AS builder
 WORKDIR /app
-COPY backend/services/discovery/ .
+COPY backend/services/discovery/ ./services/discovery/
+COPY backend/shared/ ./shared/
+WORKDIR /app/services/discovery
 RUN go mod tidy
 RUN CGO_ENABLED=0 go build -o /tagent-discovery ./cmd/server
 

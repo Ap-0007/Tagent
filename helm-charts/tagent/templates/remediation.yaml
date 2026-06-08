@@ -45,6 +45,8 @@ spec:
           value: "http://{{ .Release.Name }}-monitoring:8082"
         - name: NOTIFICATION_URL
           value: "http://{{ .Release.Name }}-notification:8085"
+        - name: KAFKA_BROKERS
+          value: "{{ .Release.Name }}-kafka:9092"
         resources:
           {{- toYaml .Values.remediation.resources | nindent 12 }}
         securityContext:

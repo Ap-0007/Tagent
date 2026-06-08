@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/tagent-ai/tagent/backend/shared/pkg/events"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -41,6 +42,35 @@ func main() {
 	// Start incident detector
 	det = detector.New(client)
 	go det.RunLoop(context.Background(), 10*time.Second)
+
+	// Kafka event publisher — publishes new incidents to event bus
+	publisher := events.NewPublisher("monitoring")
+	defer publisher.Close()
+
+	// Background loop: publish new incidents to Kafka
+	go func() {
+		var lastCount int
+		ticker := time.NewTicker(10 * time.Second)
+		defer ticker.Stop()
+		for range ticker.C {
+			incidents := det.GetIncidents()
+			if len(incidents) > lastCount {
+				// Publish new incidents
+				for _, inc := range incidents[lastCount:] {
+					_ = publisher.PublishIncident(context.Background(), events.TopicIncidentDetected, events.IncidentEvent{
+						IncidentID: inc.ID,
+						Title:      inc.Title,
+						Severity:   inc.Severity,
+						Status:     inc.Status,
+						Service:    inc.Service,
+						Namespace:  inc.Namespace,
+						RootCause:  inc.RootCause,
+					})
+				}
+				lastCount = len(incidents)
+			}
+		}
+	}()
 
 	router := gin.Default()
 

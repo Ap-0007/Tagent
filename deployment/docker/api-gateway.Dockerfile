@@ -1,6 +1,8 @@
 FROM golang:1.26-alpine AS builder
 WORKDIR /app
-COPY backend/services/api-gateway/ .
+COPY backend/services/api-gateway/ ./services/api-gateway/
+COPY backend/shared/ ./shared/
+WORKDIR /app/services/api-gateway
 RUN go mod tidy
 RUN CGO_ENABLED=0 go build -o /tagent-api-gateway ./cmd/server
 

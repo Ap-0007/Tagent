@@ -48,6 +48,20 @@ app.include_router(knowledge_router.router, prefix="/api/v1/knowledge", tags=["k
 app.include_router(risks_router.router, prefix="/api/v1/risks", tags=["risks"])
 
 
+@app.get("/api/v1/cache/stats")
+async def cache_stats():
+    from app import cache as redis_cache
+    stats = await redis_cache.get_stats()
+    return stats
+
+
+@app.post("/api/v1/cache/invalidate")
+async def cache_invalidate():
+    from app import cache as redis_cache
+    await redis_cache.invalidate_all()
+    return {"status": "cleared"}
+
+
 if __name__ == "__main__":
     import uvicorn
     port = int(os.getenv("PORT", "8083"))
