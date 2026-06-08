@@ -8,4 +8,4 @@ require (
 	github.com/tagent-ai/tagent/backend/shared/pkg/events v0.0.0
 )
 
-replace github.com/tagent-ai/tagent/backend/shared/pkg/events => ../../../shared/pkg/events
+replace github.com/tagent-ai/tagent/backend/shared/pkg/events => ../../shared/pkg/events

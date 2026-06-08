@@ -8,7 +8,6 @@ COPY backend/services/monitoring/ ./services/monitoring/
 COPY backend/shared/ ./shared/
 
 WORKDIR /build/services/monitoring
-RUN sed -i 's|../../../shared/pkg/events|../../shared/pkg/events|g' go.mod 2>/dev/null || true
 RUN go mod tidy && \
     CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
     -ldflags="-s -w -extldflags '-static'" \

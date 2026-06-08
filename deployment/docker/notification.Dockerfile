@@ -8,7 +8,6 @@ COPY backend/services/notification/ ./services/notification/
 COPY backend/shared/ ./shared/
 
 WORKDIR /build/services/notification
-RUN sed -i 's|../../../shared/pkg/events|../../shared/pkg/events|g' go.mod 2>/dev/null || true
 RUN go mod tidy && \
     CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
     -ldflags="-s -w -extldflags '-static'" \

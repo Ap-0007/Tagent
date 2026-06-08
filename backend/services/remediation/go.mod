@@ -12,7 +12,7 @@ require (
 	k8s.io/client-go v0.29.0
 )
 
-replace github.com/tagent-ai/tagent/backend/shared/pkg/events => ../../../shared/pkg/events
+replace github.com/tagent-ai/tagent/backend/shared/pkg/events => ../../shared/pkg/events
 
 require (
 	github.com/bytedance/sonic v1.9.1 // indirect
