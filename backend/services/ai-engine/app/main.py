@@ -11,6 +11,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.routers import chat, analysis, rca
 from app.routers import knowledge as knowledge_router
 from app.routers import risks as risks_router
+from app.routers import predictive as predictive_router
+from app.routers import plugins as plugins_router
+from app.routers import reports as reports_router
+from app.routers import briefing as briefing_router
 
 app = FastAPI(
     title="Tagent AI Engine",
@@ -49,11 +53,35 @@ async def health():
     }
 
 
+# Background task: collect telemetry snapshots every 15 seconds for predictive detection
+import asyncio
+from contextlib import asynccontextmanager
+
+_collector_task = None
+
+@app.on_event("startup")
+async def start_predictive_collector():
+    global _collector_task
+    async def collector_loop():
+        from app import predictive
+        while True:
+            try:
+                await predictive.collect_snapshot()
+            except Exception as e:
+                pass  # silently continue on errors
+            await asyncio.sleep(15)
+    _collector_task = asyncio.create_task(collector_loop())
+
+
 app.include_router(chat.router, prefix="/api/v1/ai", tags=["chat"])
 app.include_router(analysis.router, prefix="/api/v1/ai", tags=["analysis"])
 app.include_router(rca.router, prefix="/api/v1/ai", tags=["rca"])
 app.include_router(knowledge_router.router, prefix="/api/v1/knowledge", tags=["knowledge"])
 app.include_router(risks_router.router, prefix="/api/v1/risks", tags=["risks"])
+app.include_router(predictive_router.router, prefix="/api/v1/predictive", tags=["predictive"])
+app.include_router(plugins_router.router, prefix="/api/v1/plugins", tags=["plugins"])
+app.include_router(reports_router.router, prefix="/api/v1/reports", tags=["reports"])
+app.include_router(briefing_router.router, prefix="/api/v1/briefing", tags=["briefing"])
 
 
 @app.get("/api/v1/cache/stats")

@@ -957,3 +957,259 @@ export async function removeCluster(id: string): Promise<{ status: string }> {
         method: "DELETE",
     });
 }
+
+// ===== Predictive Detection =====
+
+export interface PredictiveResult {
+    resource: string;
+    predicted_issue: string;
+    probability: number;
+    time_to_failure: string;
+    evidence: string[];
+    preventive_action: string;
+    trend_direction: string;
+    confidence: number;
+}
+
+export interface PredictiveModelStats {
+    data_points: number;
+    tracked_resources: number;
+    active_predictions: number;
+    collection_interval: string;
+    history_window: string;
+    algorithms: string[];
+}
+
+export interface PredictivePredictionsResponse {
+    predictions: PredictiveResult[];
+    total: number;
+    model_stats: PredictiveModelStats;
+}
+
+export interface PredictiveExplainResponse {
+    resource: string;
+    explanation: string;
+    root_cause_hypothesis: string;
+    recommended_actions: string[];
+    confidence: number;
+    model: string;
+}
+
+export async function getPredictivePredictions(): Promise<PredictivePredictionsResponse> {
+    return request<PredictivePredictionsResponse>("/api/v1/predictive/predictions");
+}
+
+export async function getPredictiveStats(): Promise<PredictiveModelStats> {
+    return request<PredictiveModelStats>("/api/v1/predictive/stats");
+}
+
+export async function explainPrediction(resource: string, predictedIssue: string, evidence: string[]): Promise<PredictiveExplainResponse> {
+    return request<PredictiveExplainResponse>("/api/v1/predictive/explain", {
+        method: "POST",
+        body: JSON.stringify({ resource, predicted_issue: predictedIssue, evidence }),
+    });
+}
+
+export async function triggerPredictiveCollection(): Promise<{ status: string; data_points: number }> {
+    return request<{ status: string; data_points: number }>("/api/v1/predictive/collect", {
+        method: "POST",
+        body: JSON.stringify({}),
+    });
+}
+
+// ===== Plugin SDK =====
+
+export interface PluginInfo {
+    name: string;
+    version: string;
+    type: string;
+    description: string;
+    author: string;
+    enabled: boolean;
+    detection_count: number;
+    last_run: number | null;
+    error: string | null;
+}
+
+export interface PluginDetection {
+    plugin: string;
+    title: string;
+    severity: string;
+    service: string;
+    namespace: string;
+    evidence: string[];
+    recommendation: string;
+    detected_at: number;
+}
+
+export interface PluginsListResponse {
+    plugins: PluginInfo[];
+    total: number;
+    detectors: number;
+    analyzers: number;
+    actions: number;
+}
+
+export interface PluginDetectionsResponse {
+    detections: PluginDetection[];
+    total: number;
+}
+
+export async function getPlugins(): Promise<PluginsListResponse> {
+    return request<PluginsListResponse>("/api/v1/plugins");
+}
+
+export async function getPluginDetections(): Promise<PluginDetectionsResponse> {
+    return request<PluginDetectionsResponse>("/api/v1/plugins/detections");
+}
+
+export async function runPluginDetectors(): Promise<{ status: string; detections: PluginDetection[]; total: number }> {
+    return request<{ status: string; detections: PluginDetection[]; total: number }>("/api/v1/plugins/run-detectors", {
+        method: "POST",
+        body: JSON.stringify({}),
+    });
+}
+
+export async function installPlugin(code: string, filename: string): Promise<{ status: string; plugins?: string[] }> {
+    return request<{ status: string; plugins?: string[] }>("/api/v1/plugins/install", {
+        method: "POST",
+        body: JSON.stringify({ code, filename }),
+    });
+}
+
+export async function enablePlugin(name: string): Promise<{ status: string }> {
+    return request<{ status: string }>(`/api/v1/plugins/enable/${encodeURIComponent(name)}`, {
+        method: "POST",
+        body: JSON.stringify({}),
+    });
+}
+
+export async function disablePlugin(name: string): Promise<{ status: string }> {
+    return request<{ status: string }>(`/api/v1/plugins/disable/${encodeURIComponent(name)}`, {
+        method: "POST",
+        body: JSON.stringify({}),
+    });
+}
+
+export async function unloadPlugin(name: string): Promise<{ status: string }> {
+    return request<{ status: string }>(`/api/v1/plugins/${encodeURIComponent(name)}`, {
+        method: "DELETE",
+    });
+}
+
+// ===== Incident Reports (Auto-Generated) =====
+
+export interface GeneratedReport {
+    id: string;
+    incident_id: string;
+    title: string;
+    severity: string;
+    duration: string;
+    generated_at: string;
+    resolved_at: string;
+    status: string;
+    content?: string;
+    sections?: {
+        summary: string;
+        root_cause: string;
+        impact: string;
+        actions_taken: number;
+        recommendations: string[];
+    };
+}
+
+export interface ReportsListResponse {
+    reports: GeneratedReport[];
+    total: number;
+}
+
+export async function getGeneratedReports(): Promise<ReportsListResponse> {
+    return request<ReportsListResponse>("/api/v1/reports");
+}
+
+export async function getReportDetail(id: string): Promise<GeneratedReport> {
+    return request<GeneratedReport>(`/api/v1/reports/${encodeURIComponent(id)}`);
+}
+
+export async function getReportPdfUrl(id: string): Promise<string> {
+    return `/api/proxy/reports/${encodeURIComponent(id)}/pdf`;
+}
+
+export async function generateReport(incidentId: string): Promise<{ status: string; report_id: string; title: string }> {
+    return request<{ status: string; report_id: string; title: string }>("/api/v1/reports/generate", {
+        method: "POST",
+        body: JSON.stringify({ incident_id: incidentId }),
+    });
+}
+
+export async function generateAllReports(): Promise<{ status: string; generated: Array<{ report_id: string; incident_id: string; title: string }>; total: number }> {
+    return request<{ status: string; generated: Array<{ report_id: string; incident_id: string; title: string }>; total: number }>("/api/v1/reports/generate-all", {
+        method: "POST",
+        body: JSON.stringify({}),
+    });
+}
+
+// ===== Morning Briefing =====
+
+export interface BriefingIncident {
+    id: string;
+    title: string;
+    severity: string;
+    status: string;
+    service: string;
+    root_cause: string;
+}
+
+export interface BriefingRemediation {
+    action: string;
+    target: string;
+    status: string;
+    message: string;
+    dry_run: boolean;
+}
+
+export interface BriefingResponse {
+    id: string;
+    generated_at: string;
+    period: string;
+    greeting: string;
+    summary: string;
+    sections: {
+        incidents: BriefingIncident[];
+        remediations: BriefingRemediation[];
+        cluster_health: Record<string, string>;
+        guardian: { enabled: boolean; mode: string; runs: number; reports: number; confidence: number };
+        recommendations: string[];
+    };
+    stats: {
+        total_incidents: number;
+        critical_incidents: number;
+        high_incidents: number;
+        remediations_executed: number;
+        successful_remediations: number;
+        failed_remediations: number;
+        guardian_active: boolean;
+        guardian_runs: number;
+    };
+    model: string;
+}
+
+export interface BriefingHistoryResponse {
+    briefings: BriefingResponse[];
+    total: number;
+}
+
+export async function getLatestBriefing(): Promise<BriefingResponse> {
+    return request<BriefingResponse>("/api/v1/briefing/latest");
+}
+
+export async function generateBriefing(): Promise<BriefingResponse> {
+    return request<BriefingResponse>("/api/v1/briefing/generate", {
+        method: "POST",
+        body: JSON.stringify({}),
+    });
+}
+
+export async function getBriefingHistory(): Promise<BriefingHistoryResponse> {
+    return request<BriefingHistoryResponse>("/api/v1/briefing/history");
+}

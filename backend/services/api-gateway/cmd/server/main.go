@@ -195,6 +195,11 @@ func main() {
 	router.POST("/api/v1/ai/analyze", proxyPost(aiEngineURL, "/api/v1/ai/analyze"))
 	router.POST("/api/v1/ai/rca", proxyPost(aiEngineURL, "/api/v1/ai/rca"))
 
+	// ===== Morning Briefing (served by AI Engine) =====
+	router.GET("/api/v1/briefing/latest", proxyGet(aiEngineURL, "/api/v1/briefing/latest"))
+	router.POST("/api/v1/briefing/generate", proxyPost(aiEngineURL, "/api/v1/briefing/generate"))
+	router.GET("/api/v1/briefing/history", proxyGet(aiEngineURL, "/api/v1/briefing/history"))
+
 	// ===== Knowledge Base (served by AI Engine) =====
 	router.GET("/api/v1/knowledge/entries", proxyGetWithQuery(aiEngineURL, "/api/v1/knowledge/entries"))
 	router.GET("/api/v1/knowledge/stats", proxyGet(aiEngineURL, "/api/v1/knowledge/stats"))
@@ -209,6 +214,53 @@ func main() {
 	router.GET("/api/v1/risks/summary", proxyGet(aiEngineURL, "/api/v1/risks/summary"))
 	router.GET("/api/v1/risks/predictions", proxyGet(aiEngineURL, "/api/v1/risks/predictions"))
 	router.POST("/api/v1/risks/analyze", proxyPost(aiEngineURL, "/api/v1/risks/analyze"))
+
+	// ===== Predictive Detection (served by AI Engine) =====
+	router.GET("/api/v1/predictive/predictions", proxyGet(aiEngineURL, "/api/v1/predictive/predictions"))
+	router.GET("/api/v1/predictive/stats", proxyGet(aiEngineURL, "/api/v1/predictive/stats"))
+	router.POST("/api/v1/predictive/explain", proxyPost(aiEngineURL, "/api/v1/predictive/explain"))
+	router.POST("/api/v1/predictive/collect", proxyPost(aiEngineURL, "/api/v1/predictive/collect"))
+
+	// ===== Plugin SDK (served by AI Engine) =====
+	router.GET("/api/v1/plugins", proxyGet(aiEngineURL, "/api/v1/plugins"))
+	router.GET("/api/v1/plugins/detections", proxyGet(aiEngineURL, "/api/v1/plugins/detections"))
+	router.POST("/api/v1/plugins/run-detectors", proxyPost(aiEngineURL, "/api/v1/plugins/run-detectors"))
+	router.POST("/api/v1/plugins/install", proxyPost(aiEngineURL, "/api/v1/plugins/install"))
+	router.POST("/api/v1/plugins/enable/:name", func(c *gin.Context) {
+		reqBody, _ := io.ReadAll(c.Request.Body)
+		resp, err := http.Post(aiEngineURL+"/api/v1/plugins/enable/"+c.Param("name"), "application/json", strings.NewReader(string(reqBody)))
+		if err != nil {
+			c.JSON(502, gin.H{"error": "upstream unreachable"})
+			return
+		}
+		defer resp.Body.Close()
+		body, _ := io.ReadAll(resp.Body)
+		c.Data(resp.StatusCode, "application/json", body)
+	})
+	router.POST("/api/v1/plugins/disable/:name", func(c *gin.Context) {
+		reqBody, _ := io.ReadAll(c.Request.Body)
+		resp, err := http.Post(aiEngineURL+"/api/v1/plugins/disable/"+c.Param("name"), "application/json", strings.NewReader(string(reqBody)))
+		if err != nil {
+			c.JSON(502, gin.H{"error": "upstream unreachable"})
+			return
+		}
+		defer resp.Body.Close()
+		body, _ := io.ReadAll(resp.Body)
+		c.Data(resp.StatusCode, "application/json", body)
+	})
+	router.DELETE("/api/v1/plugins/:name", func(c *gin.Context) {
+		req, _ := http.NewRequest(http.MethodDelete, aiEngineURL+"/api/v1/plugins/"+c.Param("name"), nil)
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			c.JSON(502, gin.H{"error": "upstream unreachable"})
+			return
+		}
+		defer resp.Body.Close()
+		body, _ := io.ReadAll(resp.Body)
+		c.Data(resp.StatusCode, "application/json", body)
+	})
+	router.POST("/api/v1/plugins/analyze", proxyPost(aiEngineURL, "/api/v1/plugins/analyze"))
+	router.POST("/api/v1/plugins/action", proxyPost(aiEngineURL, "/api/v1/plugins/action"))
 
 	// ===== Monitoring =====
 	router.GET("/api/v1/metrics/summary", proxyGet(monitoringURL, "/summary"))
@@ -346,10 +398,32 @@ func main() {
 	})
 
 	// ===== Reports (from PostgreSQL-backed remediation service) =====
-	router.GET("/api/v1/reports", proxyGet(remediationURL, "/reports"))
+	router.GET("/api/v1/reports", proxyGet(aiEngineURL, "/api/v1/reports"))
 	router.GET("/api/v1/reports/:id", func(c *gin.Context) {
-		c.JSON(200, gin.H{"id": c.Param("id"), "content": ""})
+		// Try AI engine reports first (auto-generated)
+		resp, err := http.Get(aiEngineURL + "/api/v1/reports/" + c.Param("id"))
+		if err == nil {
+			defer resp.Body.Close()
+			if resp.StatusCode == 200 {
+				body, _ := io.ReadAll(resp.Body)
+				c.Data(200, "application/json", body)
+				return
+			}
+		}
+		c.JSON(404, gin.H{"error": "report not found", "id": c.Param("id")})
 	})
+	router.GET("/api/v1/reports/:id/pdf", func(c *gin.Context) {
+		resp, err := http.Get(aiEngineURL + "/api/v1/reports/" + c.Param("id") + "/pdf")
+		if err != nil {
+			c.JSON(502, gin.H{"error": "upstream unreachable"})
+			return
+		}
+		defer resp.Body.Close()
+		body, _ := io.ReadAll(resp.Body)
+		c.Data(resp.StatusCode, "text/html", body)
+	})
+	router.POST("/api/v1/reports/generate", proxyPost(aiEngineURL, "/api/v1/reports/generate"))
+	router.POST("/api/v1/reports/generate-all", proxyPost(aiEngineURL, "/api/v1/reports/generate-all"))
 
 	// ===== Autoscaling (from Discovery Service) =====
 	router.GET("/api/v1/autoscaling", proxyGet(discoveryURL, "/autoscaling"))
