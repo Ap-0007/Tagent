@@ -1,14 +1,14 @@
 # ===== Stage 1: Install dependencies =====
 FROM node:22-alpine AS deps
 WORKDIR /app
-COPY frontend/web/package.json frontend/web/package-lock.json* ./
-RUN npm ci --only=production
+COPY frontend/web/package.json ./
+RUN npm install --legacy-peer-deps
 
 # ===== Stage 2: Build =====
 FROM node:22-alpine AS builder
 WORKDIR /app
-COPY frontend/web/package.json frontend/web/package-lock.json* ./
-RUN npm ci
+COPY frontend/web/package.json ./
+RUN npm install --legacy-peer-deps
 COPY frontend/web/ .
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_ENV=production

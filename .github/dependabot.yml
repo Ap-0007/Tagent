@@ -4,53 +4,20 @@ updates:
   - package-ecosystem: "npm"
     directory: "/frontend/web"
     schedule:
-      interval: "weekly"
-      day: "monday"
-    open-pull-requests-limit: 10
+      interval: "monthly"
+    open-pull-requests-limit: 3
+    rebase-strategy: "disabled"
     labels:
       - "dependencies"
       - "frontend"
 
-  # Go - API Gateway
+  # Go - all services (grouped)
   - package-ecosystem: "gomod"
     directory: "/backend/services/api-gateway"
     schedule:
-      interval: "weekly"
-      day: "monday"
-    open-pull-requests-limit: 5
-    labels:
-      - "dependencies"
-      - "backend"
-
-  # Go - Discovery
-  - package-ecosystem: "gomod"
-    directory: "/backend/services/discovery"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-    open-pull-requests-limit: 5
-    labels:
-      - "dependencies"
-      - "backend"
-
-  # Go - Monitoring
-  - package-ecosystem: "gomod"
-    directory: "/backend/services/monitoring"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-    open-pull-requests-limit: 5
-    labels:
-      - "dependencies"
-      - "backend"
-
-  # Go - Remediation
-  - package-ecosystem: "gomod"
-    directory: "/backend/services/remediation"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-    open-pull-requests-limit: 5
+      interval: "monthly"
+    open-pull-requests-limit: 3
+    rebase-strategy: "disabled"
     labels:
       - "dependencies"
       - "backend"
@@ -59,9 +26,9 @@ updates:
   - package-ecosystem: "pip"
     directory: "/backend/services/ai-engine"
     schedule:
-      interval: "weekly"
-      day: "monday"
-    open-pull-requests-limit: 5
+      interval: "monthly"
+    open-pull-requests-limit: 3
+    rebase-strategy: "disabled"
     labels:
       - "dependencies"
       - "ai-engine"
@@ -70,20 +37,9 @@ updates:
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
-      interval: "weekly"
-      day: "monday"
-    open-pull-requests-limit: 5
+      interval: "monthly"
+    open-pull-requests-limit: 3
+    rebase-strategy: "disabled"
     labels:
       - "dependencies"
       - "ci"
-
-  # Docker
-  - package-ecosystem: "docker"
-    directory: "/deployment/docker"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-    open-pull-requests-limit: 5
-    labels:
-      - "dependencies"
-      - "docker"
