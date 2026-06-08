@@ -203,7 +203,7 @@ export default function UserManagementPage() {
                 <h3 className="text-[13px] font-semibold text-[#e6edf3] mb-3">Team Members ({users.length})</h3>
                 {users.length === 0 ? (
                     <div className="py-8 text-center">
-                        <p className="text-[12px] text-[#8b949e]">No team members yet. Click "Create User" to add your first team member.</p>
+                        <p className="text-[12px] text-[#8b949e]">No team members yet. Click &quot;Create User&quot; to add your first team member.</p>
                     </div>
                 ) : (
                     <div className="space-y-2">

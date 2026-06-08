@@ -104,7 +104,7 @@ export default function SetupPage() {
                     {step === 2 && (
                         <>
                             <h2 className="text-[18px] font-bold text-[#e6edf3] mb-1">Your Role & Cluster</h2>
-                            <p className="text-[12px] text-[#8b949e] mb-6">Tell us about your role and the cluster you're monitoring.</p>
+                            <p className="text-[12px] text-[#8b949e] mb-6">Tell us about your role and the cluster you&apos;re monitoring.</p>
 
                             <div className="space-y-4">
                                 <div>

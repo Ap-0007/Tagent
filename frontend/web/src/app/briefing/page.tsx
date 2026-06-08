@@ -77,7 +77,7 @@ export default function BriefingPage() {
                             <h1 className="text-lg font-semibold text-zinc-100">
                                 {briefing?.greeting || "Morning Briefing"}
                             </h1>
-                            <p className="text-sm text-zinc-500 mt-0.5">Here's what happened and what to watch today</p>
+                            <p className="text-sm text-zinc-500 mt-0.5">Here&apos;s what happened and what to watch today</p>
                         </div>
                     </div>
                     <div className="flex items-center gap-2">
@@ -167,7 +167,7 @@ export default function BriefingPage() {
                         {briefing?.sections?.recommendations && briefing.sections.recommendations.length > 0 && (
                             <div className="bg-zinc-900/50 border border-zinc-800 rounded-lg p-4">
                                 <h3 className="text-[13px] font-semibold text-zinc-200 mb-3 flex items-center gap-2">
-                                    <Sparkles className="w-4 h-4 text-purple-400" />Today's Recommendations
+                                    <Sparkles className="w-4 h-4 text-purple-400" />Today&apos;s Recommendations
                                 </h3>
                                 <div className="space-y-2">
                                     {briefing.sections.recommendations.map((rec, i) => (
@@ -235,7 +235,7 @@ export default function BriefingPage() {
                     <div className="bg-zinc-900/50 border border-zinc-800 rounded-lg px-6 py-12 text-center">
                         <Sun className="w-8 h-8 text-amber-400 mx-auto mb-3" />
                         <p className="text-sm text-zinc-400">No briefing available yet.</p>
-                        <p className="text-[11px] text-zinc-600 mt-1">Click "Refresh Briefing" to generate one from current cluster data.</p>
+                        <p className="text-[11px] text-zinc-600 mt-1">Click &quot;Refresh Briefing&quot; to generate one from current cluster data.</p>
                     </div>
                 )}
             </div>
