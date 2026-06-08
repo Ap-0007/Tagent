@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/tagent-ai/tagent/backend/shared/pkg/events"
 	"github.com/tagent-ai/tagent/backend/services/notification/internal/escalation"
 )
@@ -248,6 +249,9 @@ func main() {
 			"email":   map[string]interface{}{"configured": emailOk, "host": smtpHost},
 		})
 	})
+
+	// Prometheus metrics
+	router.GET("/metrics", gin.WrapH(promhttp.Handler()))
 
 	router.POST("/notify", handleNotify)
 

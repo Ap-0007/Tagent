@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"github.com/tagent-ai/tagent/backend/services/discovery/internal/k8s"
@@ -72,6 +73,9 @@ func main() {
 	router.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "healthy", "service": "tagent-discovery"})
 	})
+
+	// Prometheus metrics
+	router.GET("/metrics", gin.WrapH(promhttp.Handler()))
 
 	router.GET("/resources", func(c *gin.Context) {
 		stateLock.RLock()

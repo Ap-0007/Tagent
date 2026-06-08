@@ -15,6 +15,11 @@ import (
 
 var db *sql.DB
 
+// GetDB returns the database connection (may be nil if not connected)
+func GetDB() *sql.DB {
+	return db
+}
+
 // InitDB connects to PostgreSQL and creates the users table
 func InitDB(databaseURL string) error {
 	var err error

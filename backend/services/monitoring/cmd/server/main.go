@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/tagent-ai/tagent/backend/shared/pkg/events"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -82,6 +83,9 @@ func main() {
 			"incidents":  len(det.GetIncidents()),
 		})
 	})
+
+	// Prometheus metrics endpoint
+	router.GET("/metrics", gin.WrapH(promhttp.Handler()))
 
 	// Metrics summary (from Prometheus)
 	router.GET("/summary", func(c *gin.Context) {

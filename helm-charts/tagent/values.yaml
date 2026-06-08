@@ -136,6 +136,12 @@ postgres:
     enabled: false
     size: 5Gi
 
+# ===== PROMETHEUS =====
+
+prometheus:
+  serviceMonitor:
+    enabled: false # Set to true if you have Prometheus Operator installed
+
 # ===== INGRESS =====
 
 ingress:

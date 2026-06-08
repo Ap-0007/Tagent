@@ -12,7 +12,9 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/tagent-ai/tagent/backend/services/api-gateway/internal/cache"
 	"github.com/tagent-ai/tagent/backend/services/api-gateway/internal/handlers"
+	"github.com/tagent-ai/tagent/backend/services/api-gateway/internal/metrics"
 	"github.com/tagent-ai/tagent/backend/services/api-gateway/internal/middleware"
+	"github.com/tagent-ai/tagent/backend/services/api-gateway/internal/multicluster"
 	"github.com/tagent-ai/tagent/backend/services/api-gateway/internal/ws"
 )
 
@@ -55,6 +57,10 @@ func main() {
 	router.GET("/ready", func(c *gin.Context) {
 		c.JSON(200, gin.H{"status": "ready"})
 	})
+
+	// ===== Prometheus Metrics =====
+	router.Use(metrics.Middleware())
+	router.GET("/metrics", metrics.Handler())
 
 	// ===== Redis Init =====
 	redisOk := cache.Init()
@@ -130,6 +136,40 @@ func main() {
 		log.Printf("  Database:    disabled (DATABASE_URL not set)")
 	}
 	handlers.RegisterUserRoutes(router)
+
+	// ===== Multi-Cluster Management =====
+	clusterMgr := multicluster.New(handlers.GetDB())
+
+	router.GET("/api/v1/fleet/clusters", func(c *gin.Context) {
+		clusters := clusterMgr.GetClusters(c.Request.Context())
+		c.JSON(200, gin.H{"clusters": clusters, "total": len(clusters)})
+	})
+
+	router.GET("/api/v1/fleet/summary", func(c *gin.Context) {
+		summary := clusterMgr.GetFleetSummary(c.Request.Context())
+		c.JSON(200, summary)
+	})
+
+	router.POST("/api/v1/fleet/clusters", func(c *gin.Context) {
+		var req multicluster.ClusterInfo
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(400, gin.H{"error": err.Error()})
+			return
+		}
+		if err := clusterMgr.RegisterCluster(req); err != nil {
+			c.JSON(500, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(201, gin.H{"status": "registered", "id": req.ID})
+	})
+
+	router.DELETE("/api/v1/fleet/clusters/:id", func(c *gin.Context) {
+		if !clusterMgr.RemoveCluster(c.Param("id")) {
+			c.JSON(404, gin.H{"error": "cluster not found or cannot be removed"})
+			return
+		}
+		c.JSON(200, gin.H{"status": "removed"})
+	})
 
 	// WebSocket endpoint for live updates
 	wsHub = ws.NewHub()

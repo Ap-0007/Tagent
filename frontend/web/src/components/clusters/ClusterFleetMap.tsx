@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { getFleetClusters, type ClusterRegistration } from "@/lib/api";
 
 // ─── Cluster Fleet Map (glass cards + orbital connections) ───────────────────
 
@@ -18,11 +19,40 @@ interface ClusterCard {
     left: string;
 }
 
-const CLUSTERS: ClusterCard[] = [
-    { id: "prod-east", name: "Production", env: "US-East", healthScore: 98, status: "healthy", workloads: 412, cpu: 68, memory: 72, top: "5%", left: "32%" },
-    { id: "prod-west", name: "Production", env: "EU-West", healthScore: 89, status: "warning", workloads: 398, cpu: 74, memory: 81, top: "28%", left: "2%" },
-    { id: "staging", name: "Staging", env: "US-West", healthScore: 76, status: "warning", workloads: 231, cpu: 62, memory: 71, top: "28%", left: "65%" },
-    { id: "dev", name: "Development", env: "Asia-South", healthScore: 92, status: "healthy", workloads: 721, cpu: 45, memory: 67, top: "62%", left: "28%" },
+// Positions for clusters (cycle through predefined positions)
+const POSITIONS = [
+    { top: "5%", left: "32%" },
+    { top: "28%", left: "2%" },
+    { top: "28%", left: "65%" },
+    { top: "62%", left: "28%" },
+    { top: "55%", left: "60%" },
+    { top: "10%", left: "5%" },
+    { top: "68%", left: "5%" },
+    { top: "10%", left: "70%" },
+];
+
+function mapApiToCard(c: ClusterRegistration, idx: number): ClusterCard {
+    const pos = POSITIONS[idx % POSITIONS.length];
+    let status: "healthy" | "warning" | "critical" = "healthy";
+    if (c.health_score < 50) status = "critical";
+    else if (c.health_score < 80) status = "warning";
+
+    return {
+        id: c.id,
+        name: c.name,
+        env: c.region || c.environment,
+        healthScore: c.health_score,
+        status,
+        workloads: c.workloads,
+        cpu: c.cpu_percent,
+        memory: c.memory_percent,
+        top: pos.top,
+        left: pos.left,
+    };
+}
+
+const FALLBACK_CLUSTERS: ClusterCard[] = [
+    { id: "local", name: "Local Cluster", env: "Local", healthScore: 95, status: "healthy", workloads: 12, cpu: 45, memory: 60, top: "28%", left: "32%" },
 ];
 
 const STATUS_ICON: Record<string, { bg: string; border: string; icon: string }> = {
@@ -33,6 +63,21 @@ const STATUS_ICON: Record<string, { bg: string; border: string; icon: string }> 
 
 export function ClusterFleetMap() {
     const [hovered, setHovered] = useState<string | null>(null);
+    const [clusters, setClusters] = useState<ClusterCard[]>(FALLBACK_CLUSTERS);
+
+    useEffect(() => {
+        async function load() {
+            try {
+                const data = await getFleetClusters();
+                if (data.clusters && data.clusters.length > 0) {
+                    setClusters(data.clusters.map((c, i) => mapApiToCard(c, i)));
+                }
+            } catch { }
+        }
+        load();
+        const interval = setInterval(load, 15000);
+        return () => clearInterval(interval);
+    }, []);
 
     return (
         <div className="rounded-[12px] border border-[#21262d] bg-[#161b22] flex flex-col overflow-hidden">
@@ -117,7 +162,7 @@ export function ClusterFleetMap() {
                 </svg>
 
                 {/* Cluster cards (positioned absolutely) */}
-                {CLUSTERS.map(cluster => (
+                {clusters.map(cluster => (
                     <div
                         key={cluster.id}
                         className="absolute z-10"

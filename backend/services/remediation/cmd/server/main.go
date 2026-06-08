@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/tagent-ai/tagent/backend/shared/pkg/events"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -137,6 +138,9 @@ func main() {
 			"night_guardian": guardianEnabled,
 		})
 	})
+
+	// Prometheus metrics
+	router.GET("/metrics", gin.WrapH(promhttp.Handler()))
 
 	router.POST("/execute", executeAction)
 

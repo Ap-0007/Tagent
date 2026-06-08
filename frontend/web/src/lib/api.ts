@@ -888,3 +888,72 @@ export interface CacheStats {
 export async function getCacheStats(): Promise<CacheStats> {
     return request<CacheStats>("/api/v1/cache/stats");
 }
+
+// ===== Multi-Cluster Fleet =====
+
+export interface ClusterRegistration {
+    id: string;
+    name: string;
+    environment: string;
+    region: string;
+    provider: string;
+    status: string;
+    health_score: number;
+    workloads: number;
+    nodes: number;
+    pods: number;
+    cpu_percent: number;
+    memory_percent: number;
+    active_incidents: number;
+    last_scan_at: string;
+    created_at: string;
+    discovery_url?: string;
+    monitoring_url?: string;
+}
+
+export interface FleetClustersResponse {
+    clusters: ClusterRegistration[];
+    total: number;
+}
+
+export interface FleetSummaryResponse {
+    total_clusters: number;
+    healthy_clusters: number;
+    warning_clusters: number;
+    critical_clusters: number;
+    fleet_health_score: number;
+    total_workloads: number;
+    total_nodes: number;
+    total_pods: number;
+    total_incidents: number;
+    ai_confidence: number;
+    autonomous_actions: number;
+}
+
+export async function getFleetClusters(): Promise<FleetClustersResponse> {
+    return request<FleetClustersResponse>("/api/v1/fleet/clusters");
+}
+
+export async function getFleetSummary(): Promise<FleetSummaryResponse> {
+    return request<FleetSummaryResponse>("/api/v1/fleet/summary");
+}
+
+export async function registerCluster(data: {
+    name: string;
+    environment: string;
+    region: string;
+    provider: string;
+    discovery_url: string;
+    monitoring_url: string;
+}): Promise<{ status: string; id: string }> {
+    return request<{ status: string; id: string }>("/api/v1/fleet/clusters", {
+        method: "POST",
+        body: JSON.stringify(data),
+    });
+}
+
+export async function removeCluster(id: string): Promise<{ status: string }> {
+    return request<{ status: string }>(`/api/v1/fleet/clusters/${encodeURIComponent(id)}`, {
+        method: "DELETE",
+    });
+}

@@ -18,6 +18,14 @@ app = FastAPI(
     version="0.1.0",
 )
 
+# Prometheus metrics (auto-instruments all endpoints)
+from prometheus_fastapi_instrumentator import Instrumentator
+Instrumentator(
+    should_group_status_codes=True,
+    should_ignore_untemplated=True,
+    excluded_handlers=["/health", "/metrics"],
+).instrument(app).expose(app, endpoint="/metrics")
+
 # Allow frontend to call the AI Engine directly during development
 app.add_middleware(
     CORSMiddleware,
