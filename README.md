@@ -26,9 +26,9 @@
 
 ## What is Tagent?
 
-Tagent is an open-source AI SRE (Site Reliability Engineer) that lives inside your Kubernetes cluster. It continuously monitors your infrastructure, correlates signals across logs, metrics, and traces, and takes action when things go wrong.
+Tagent is an open-source AI SRE (Site Reliability Engineer) that lives inside your Kubernetes cluster. It continuously monitors your infrastructure, correlates signals across metrics and events, and takes action when things go wrong.
 
-**The problem:** Engineers spend hours manually correlating dashboards, logs, and alerts during incidents. Incidents happen at night. The same problems get fixed repeatedly. Postmortems are written late or never.
+**The problem:** Engineers spend hours correlating dashboards, logs, and alerts during incidents. Incidents happen at night. The same problems get fixed repeatedly.
 
 **Tagent's solution:**
 
@@ -40,24 +40,27 @@ All of this happens automatically, with full transparency and human approval for
 
 ---
 
-## Key Features
+## Features
 
 | Feature | Description |
 |---------|-------------|
-| **Auto-Detection** | Monitors pods, deployments, nodes, metrics, logs in real-time |
+| **Auto-Detection** | Monitors pods, deployments, nodes, metrics in real-time |
 | **AI Root Cause Analysis** | Correlates signals to identify why something broke |
-| **Blast Radius** | Shows which services are affected downstream |
 | **Auto-Remediation** | Restarts pods, scales deployments, rolls back — with safety checks |
 | **Night Guardian** | Autonomous overnight mode with configurable confidence thresholds |
 | **Escalation Chain** | Slack → Email → Phone call → Auto-fix (configurable timing) |
-| **Video Briefing** | Morning AI briefing explaining what happened overnight |
-| **Incident Reports** | Auto-generated postmortems with timeline, RCA, and prevention |
-| **Knowledge Base** | Learns from past incidents, recommends proven fixes |
-| **Cost Dashboard** | Infrastructure spend tracking with optimization recommendations |
-| **Chaos Testing** | Validate remediation logic with controlled failure simulations |
-| **HPA/VPA Monitoring** | Track autoscaling status and events |
+| **Morning Briefing** | AI-generated "here's what happened overnight" summary |
+| **Incident Reports** | Auto-generated postmortems with PDF export |
+| **Knowledge Base** | Vector-search powered incident memory (pgvector) |
+| **Risk Scoring** | Predicts which services are most likely to fail next |
+| **Predictive Detection** | ML-based failure prediction before incidents occur |
+| **Plugin SDK** | Community-built custom detectors — extend without modifying core |
+| **Multi-Cluster** | Monitor multiple K8s clusters from one dashboard |
 | **Service Topology** | Visual dependency graph with health indicators |
-| **CLI** | `tagent incidents`, `tagent analyze`, `tagent remediate` |
+| **Cost Dashboard** | Infrastructure spend tracking with optimization recommendations |
+| **Chaos Testing** | Dry-run failure simulations to validate resilience |
+| **HPA/VPA Monitoring** | Track autoscaling status and events |
+| **CLI** | `tagent incidents`, `tagent chat`, `tagent risks`, `tagent remediate` |
 
 ---
 
@@ -65,7 +68,7 @@ All of this happens automatically, with full transparency and human approval for
 
 Tagent's AI engine runs **entirely on local models**. No OpenAI, no Anthropic, no cloud APIs. Ever.
 
-- **Default runtime:** [Ollama](https://ollama.ai)
+- **Runtime:** [Ollama](https://ollama.ai)
 - **Chat model:** `llama3.1:8b`
 - **Embedding model:** `nomic-embed-text`
 
@@ -76,27 +79,36 @@ Tagent's AI engine runs **entirely on local models**. No OpenAI, no Anthropic, n
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                        Ingress (ALB/NGINX)                   │
-└────────────────────────────┬────────────────────────────────┘
-                             │
-┌────────────────────────────▼────────────────────────────────┐
-│                      API Gateway (Go)                        │
-│              Auth · Routing · Rate Limit · WebSocket         │
-└──┬──────────┬──────────┬──────────┬──────────┬──────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│                      Ingress (ALB / NGINX)                       │
+└───────────────────────────────┬─────────────────────────────────┘
+                                │
+┌───────────────────────────────▼─────────────────────────────────┐
+│                       API Gateway (Go/Gin)                        │
+│     Auth · Rate Limit (Redis) · Cache · Routing · WebSocket      │
+│               Prometheus /metrics · Multi-Cluster                 │
+└──┬──────────┬──────────┬──────────┬──────────┬──────────────────┘
    │          │          │          │          │
    ▼          ▼          ▼          ▼          ▼
-┌──────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌──────────────┐
-│Disco-│ │Monitor-│ │   AI   │ │Remedi- │ │ Notification │
-│very  │ │  ing   │ │ Engine │ │ation   │ │   Service    │
-│(Go)  │ │ (Go)   │ │(Python)│ │ (Go)   │ │    (Go)      │
-└──┬───┘ └───┬────┘ └───┬────┘ └───┬────┘ └──────┬───────┘
-   │         │          │          │              │
-   └─────────┴──────────┴──────────┴──────────────┘
-                         │
-   ┌─────────────────────┼─────────────────────────┐
-   │  PostgreSQL · Redis · Kafka · Prometheus · Ollama │
-   └───────────────────────────────────────────────────┘
+┌──────┐ ┌────────┐ ┌──────────────────┐ ┌────────┐ ┌────────────┐
+│Disco-│ │Monitor-│ │    AI Engine      │ │Remedi- │ │Notification│
+│very  │ │  ing   │ │   (Python)        │ │ation   │ │  Service   │
+│(Go)  │ │ (Go)   │ │                   │ │ (Go)   │ │   (Go)     │
+│      │ │        │ │ • Chat            │ │        │ │            │
+│Scan  │ │Detect  │ │ • RCA             │ │Execute │ │ Slack      │
+│HPA   │ │Alerts  │ │ • Knowledge Base  │ │Guardian│ │ Email      │
+│Logs  │ │Incident│ │ • Risk Scoring    │ │Chaos   │ │ Phone      │
+│Cost  │ │        │ │ • Predictive      │ │Reports │ │ Escalation │
+│      │ │        │ │ • Plugins         │ │        │ │ Kafka Consumer│
+│      │ │        │ │ • Briefing        │ │        │ │            │
+│      │ │        │ │ • Reports         │ │        │ │            │
+└──┬───┘ └───┬────┘ └────────┬─────────┘ └───┬────┘ └──────┬─────┘
+   │         │               │               │              │
+   └─────────┴───────────────┼───────────────┴──────────────┘
+                             │
+   ┌─────────────────────────┼─────────────────────────────────┐
+   │  PostgreSQL (pgvector) · Redis · Kafka · Prometheus · Ollama │
+   └───────────────────────────────────────────────────────────────┘
 ```
 
 **All services run as pods in the `tagent` namespace.**
@@ -107,53 +119,39 @@ Tagent's AI engine runs **entirely on local models**. No OpenAI, no Anthropic, n
 
 ### Prerequisites
 
-- Kubernetes 1.25+ (local: minikube, kind, Docker Desktop; cloud: EKS, GKE, AKS)
+- Kubernetes 1.25+ (minikube, kind, Docker Desktop, EKS, GKE, AKS)
 - Helm 3.10+
 - `kubectl` configured for your cluster
 
-### Quick Install
+### Quick Install (from Helm repo)
 
 ```bash
-# Add the Helm repository
 helm repo add tagent https://tagent-dev.github.io/Tagent
 helm repo update
-
-# Install
-helm install tagent tagent/tagent \
-  --namespace tagent \
-  --create-namespace
-
-# Verify
-kubectl get pods -n tagent
-
-# Access the UI
-kubectl port-forward -n tagent svc/tagent-web 3000:80
+helm install tagent tagent/tagent --namespace tagent --create-namespace
 ```
-
-Open **http://localhost:3000**
 
 ### Install from Source
 
 ```bash
 git clone https://github.com/Tagent-dev/Tagent.git
 cd Tagent
-
-helm install tagent ./helm-charts/tagent \
-  --namespace tagent \
-  --create-namespace \
-  -f helm-charts/tagent/values-development.yaml
+helm install tagent ./helm-charts/tagent --namespace tagent --create-namespace
 ```
 
-### EKS with Ingress
+### Access the UI
 
 ```bash
-helm install tagent tagent/tagent \
-  --namespace tagent \
-  --create-namespace \
-  -f helm-charts/tagent/values-production.yaml \
-  --set ingress.enabled=true \
-  --set ingress.className=alb \
-  --set ingress.hosts[0].host=tagent.yourdomain.com
+kubectl port-forward -n tagent svc/tagent-web 3000:3000
+```
+
+Open **http://localhost:3000**
+
+### Pull AI Model (first time)
+
+```bash
+kubectl exec -it -n tagent $(kubectl get pods -n tagent -l app=ollama -o name) -- ollama pull llama3.1:8b
+kubectl exec -it -n tagent $(kubectl get pods -n tagent -l app=ollama -o name) -- ollama pull nomic-embed-text
 ```
 
 ---
@@ -161,17 +159,44 @@ helm install tagent tagent/tagent \
 ## What Gets Deployed
 
 ```
-kubectl get pods -n tagent
+$ kubectl get pods -n tagent
 
-NAME                                    READY   STATUS    AGE
-tagent-api-gateway-xxx                  1/1     Running   2m
-tagent-discovery-xxx                    1/1     Running   2m
-tagent-monitoring-xxx                   1/1     Running   2m
-tagent-ai-engine-xxx                    1/1     Running   2m
-tagent-remediation-xxx                  1/1     Running   2m
-tagent-notification-xxx                 1/1     Running   2m
-tagent-ollama-xxx                       1/1     Running   2m
-tagent-web-xxx                          1/1     Running   2m
+tagent-api-gateway-xxx      1/1   Running
+tagent-discovery-xxx        1/1   Running
+tagent-monitoring-xxx       1/1   Running
+tagent-ai-engine-xxx        1/1   Running
+tagent-remediation-xxx      1/1   Running
+tagent-notification-xxx     1/1   Running
+tagent-ollama-xxx           1/1   Running
+tagent-web-xxx              1/1   Running
+tagent-postgres-xxx         1/1   Running
+tagent-redis-xxx            1/1   Running
+tagent-kafka-xxx            1/1   Running
+```
+
+---
+
+## CLI
+
+Install the CLI for terminal access:
+
+```bash
+# Linux
+curl -Lo tagent https://github.com/Tagent-dev/Tagent/releases/latest/download/tagent-linux-amd64
+chmod +x tagent && sudo mv tagent /usr/local/bin/
+
+# macOS
+curl -Lo tagent https://github.com/Tagent-dev/Tagent/releases/latest/download/tagent-darwin-arm64
+chmod +x tagent && sudo mv tagent /usr/local/bin/
+```
+
+```bash
+$ tagent status           # cluster health
+$ tagent incidents        # list active incidents
+$ tagent chat 'why is checkout slow?'  # ask AI
+$ tagent risks            # service risk scores
+$ tagent remediate restart-pod -n prod -t app-xyz --dry-run
+$ tagent guardian         # Night Guardian status
 ```
 
 ---
@@ -183,27 +208,28 @@ Key settings in `values.yaml`:
 ```yaml
 # Remediation safety mode
 remediation:
-  mode: "read-only"  # read-only | approval-required | auto
+  mode: "read-only"     # read-only | approval-required | auto
 
 # Night Guardian (autonomous overnight mode)
 nightGuardian:
   enabled: false
   confidence: "85"
 
-# Escalation timing
+# Escalation chain
 escalation:
+  enabled: false
   phoneDelayMin: "3"
   autoFixDelayMin: "10"
-  quietStart: "22:00"
-  quietEnd: "06:00"
+  minSeverity: "high"
 
 # Local AI model
 ollama:
   model: "llama3.1:8b"
   embeddingModel: "nomic-embed-text"
-```
 
-See [full values.yaml](helm-charts/tagent/values.yaml) for all options.
+# Multi-cluster (register additional clusters via API)
+# POST /api/v1/fleet/clusters
+```
 
 ---
 
@@ -211,24 +237,25 @@ See [full values.yaml](helm-charts/tagent/values.yaml) for all options.
 
 | Layer | Technology |
 |-------|-----------|
-| API Gateway | Go + Gin |
+| API Gateway | Go + Gin + Redis (rate limit + cache) |
 | Discovery, Monitoring, Remediation, Notification | Go |
 | AI Engine | Python + FastAPI + Ollama |
-| Frontend | Next.js 14 + TypeScript + Tailwind CSS |
-| Database | PostgreSQL |
-| Cache | Redis |
-| Queue | Kafka |
-| Metrics | Prometheus |
+| Frontend | Next.js 15 + TypeScript + Tailwind CSS |
+| Database | PostgreSQL + pgvector |
+| Cache | Redis 7 |
+| Event Bus | Apache Kafka |
+| Metrics | Prometheus (all services expose /metrics) |
 | LLM | Ollama (local, llama3.1:8b) |
 | Deployment | Kubernetes + Helm |
 | CI/CD | GitHub Actions |
+| CLI | Go + Cobra |
 
 ---
 
 ## Development
 
 ```bash
-# Start local infrastructure
+# Start infrastructure
 docker compose -f docker-compose.dev.yml up -d
 
 # Frontend
@@ -242,32 +269,75 @@ cd backend/services/ai-engine
 pip install -r requirements.txt
 uvicorn app.main:app --port 8083
 
-# Pull the local LLM model
+# Pull LLM model
 docker compose exec ollama ollama pull llama3.1:8b
-docker compose exec ollama ollama pull nomic-embed-text
 ```
 
 ---
 
 ## Documentation
 
-- [Development Roadmap](doc/DEVELOPMENT_ROADMAP.md)
-- [AI Requirements (Local Models Only)](doc/AI_REQUIREMENTS.md)
-- [Advanced Features Spec](doc/FEATURES_ADVANCED.md)
-- [Installation Guide](doc/INSTALL.md)
-- [Helm Chart README](helm-charts/tagent/README.md)
+| Document | Description |
+|----------|-------------|
+| [Architecture](doc/ARCHITECTURE.md) | System design, data flow, service responsibilities |
+| [API Reference](doc/API_REFERENCE.md) | All 80+ API endpoints |
+| [Installation Guide](doc/INSTALL.md) | Step-by-step install (Helm, EKS, local) |
+| [Development Roadmap](doc/DEVELOPMENT_ROADMAP.md) | Full build plan from code to market |
+| [AI Requirements](doc/AI_REQUIREMENTS.md) | Local models constraint (hard requirement) |
+| [Advanced Features](doc/FEATURES_ADVANCED.md) | Auto-fix, escalation, video briefing spec |
+| [Plugin SDK](doc/PLUGIN_SDK.md) | Build custom detectors |
+| [Vision](doc/VISION.md) | Original project vision and philosophy |
+| [CLI README](cli/README.md) | CLI installation and commands |
 
 ---
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for setup instructions, commit conventions, and PR guidelines.
+We welcome contributions! This is an open-source project.
+
+```bash
+git clone https://github.com/Tagent-dev/Tagent.git
+cd Tagent
+# Pick an issue labeled "good-first-issue"
+# Make your changes
+# Submit a PR
+```
+
+No formal application. Just pick an issue and start coding.
+
+---
+
+## Roadmap
+
+- [x] Core platform (6 microservices)
+- [x] AI Chat + RCA + Analysis (Ollama)
+- [x] Night Guardian (autonomous remediation)
+- [x] Knowledge Base (pgvector embeddings)
+- [x] Risk Scoring + Predictive Detection
+- [x] Escalation Chain (Slack → Email → Phone)
+- [x] Morning Briefing (AI summary)
+- [x] Incident Reports (Markdown + PDF)
+- [x] Plugin SDK (custom detectors)
+- [x] Multi-Cluster support
+- [x] CLI tool
+- [x] Kafka event streaming
+- [x] Redis caching + rate limiting
+- [x] Prometheus /metrics on all services
+- [ ] JWT + OIDC authentication
+- [ ] RBAC enforcement
+- [ ] Mobile app
+- [ ] AI Video Briefing (local TTS)
 
 ---
 
 ## Security
 
-See [SECURITY.md](SECURITY.md) for vulnerability reporting and security architecture.
+See [SECURITY.md](SECURITY.md) for vulnerability reporting.
+
+- All AI runs locally — no data leaves your cluster
+- Destructive actions always require human approval (unless Night Guardian is enabled)
+- All actions are audit-logged
+- Helm chart uses non-root containers, read-only filesystem, dropped capabilities
 
 ---
 

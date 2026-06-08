@@ -26,6 +26,8 @@ jobs:
             dockerfile: deployment/docker/ai-engine.Dockerfile
           - service: remediation
             dockerfile: deployment/docker/remediation.Dockerfile
+          - service: notification
+            dockerfile: deployment/docker/notification.Dockerfile
           - service: web
             dockerfile: deployment/docker/web.Dockerfile
     steps:

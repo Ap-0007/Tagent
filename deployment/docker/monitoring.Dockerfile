@@ -1,11 +1,33 @@
-FROM golang:1.26-alpine AS builder
-WORKDIR /app
-COPY backend/services/monitoring/ .
-RUN go mod tidy
-RUN CGO_ENABLED=0 go build -o /tagent-monitoring ./cmd/server
+# ===== Stage 1: Build =====
+FROM golang:1.25-alpine AS builder
 
-FROM alpine:3.23
-RUN apk --no-cache add ca-certificates
-COPY --from=builder /tagent-monitoring /usr/local/bin/
+RUN apk add --no-cache git ca-certificates tzdata
+
+WORKDIR /build
+COPY backend/services/monitoring/ ./services/monitoring/
+COPY backend/shared/ ./shared/
+
+WORKDIR /build/services/monitoring
+RUN go mod tidy && \
+    CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+    -ldflags="-s -w -extldflags '-static'" \
+    -o /tagent-monitoring ./cmd/server
+
+# ===== Stage 2: Production (distroless) =====
+FROM gcr.io/distroless/static-debian12:nonroot
+
+LABEL org.opencontainers.image.title="Tagent Monitoring" \
+    org.opencontainers.image.description="AI-Powered Kubernetes SRE Platform — Monitoring Service" \
+    org.opencontainers.image.vendor="Tagent" \
+    org.opencontainers.image.source="https://github.com/Tagent-dev/Tagent" \
+    org.opencontainers.image.licenses="Apache-2.0"
+
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+COPY --from=builder /usr/share/zoneinfo /usr/share/zoneinfo
+COPY --from=builder /tagent-monitoring /tagent-monitoring
+
+USER nonroot:nonroot
+
 EXPOSE 8082
-CMD ["tagent-monitoring"]
+
+ENTRYPOINT ["/tagent-monitoring"]

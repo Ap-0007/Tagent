@@ -1,15 +1,52 @@
 global:
   scrape_interval: 15s
+  evaluation_interval: 15s
 
+# Scrape all Tagent services
 scrape_configs:
   - job_name: "tagent-api-gateway"
+    metrics_path: /metrics
     static_configs:
       - targets: ["host.docker.internal:8080"]
+        labels:
+          service: api-gateway
 
   - job_name: "tagent-discovery"
+    metrics_path: /metrics
     static_configs:
       - targets: ["host.docker.internal:8081"]
+        labels:
+          service: discovery
 
   - job_name: "tagent-monitoring"
+    metrics_path: /metrics
     static_configs:
       - targets: ["host.docker.internal:8082"]
+        labels:
+          service: monitoring
+
+  - job_name: "tagent-ai-engine"
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["host.docker.internal:8083"]
+        labels:
+          service: ai-engine
+
+  - job_name: "tagent-remediation"
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["host.docker.internal:8084"]
+        labels:
+          service: remediation
+
+  - job_name: "tagent-notification"
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["host.docker.internal:8085"]
+        labels:
+          service: notification
+
+  # Prometheus self-monitoring
+  - job_name: "prometheus"
+    static_configs:
+      - targets: ["localhost:9090"]

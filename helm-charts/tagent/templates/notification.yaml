@@ -59,6 +59,16 @@ spec:
           value: {{ .Values.notification.smtpFrom | default "" | quote }}
         - name: SMTP_TO
           value: {{ .Values.notification.smtpTo | default "" | quote }}
+        - name: KAFKA_BROKERS
+          value: "{{ .Release.Name }}-kafka:9092"
+        - name: ESCALATION_ENABLED
+          value: {{ .Values.escalation.enabled | default "false" | quote }}
+        - name: ESCALATION_PHONE_DELAY_MIN
+          value: {{ .Values.escalation.phoneDelayMin | default "3" | quote }}
+        - name: ESCALATION_AUTO_FIX_DELAY_MIN
+          value: {{ .Values.escalation.autoFixDelayMin | default "10" | quote }}
+        - name: ESCALATION_MIN_SEVERITY
+          value: {{ .Values.escalation.minSeverity | default "high" | quote }}
         resources:
           {{- toYaml .Values.notification.resources | nindent 12 }}
         securityContext:

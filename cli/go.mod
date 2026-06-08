@@ -1,3 +1,9 @@
 module github.com/tagent-ai/tagent/cli
 
-go 1.21
+go 1.25
+
+require (
+	github.com/spf13/cobra v1.8.0
+	github.com/fatih/color v1.16.0
+	github.com/olekukonko/tablewriter v0.0.5
+)

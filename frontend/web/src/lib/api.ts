@@ -414,3 +414,802 @@ export interface HealthResponse {
 export async function getHealth(): Promise<HealthResponse> {
     return request<HealthResponse>("/api/v1/health");
 }
+
+// ===== Integrations =====
+
+export interface IntegrationInfo {
+    id: string;
+    name: string;
+    status: string;
+    last_sync: string;
+    last_sync_at: string;
+    setup_type: string;
+    health: string;
+    env_vars: string[];
+    configured: boolean;
+}
+
+export interface IntegrationsListResponse {
+    integrations: IntegrationInfo[];
+    total: number;
+    connected: number;
+}
+
+export interface IntegrationHealthResponse {
+    total_integrations: number;
+    healthy: number;
+    unhealthy: number;
+    overall_health: number;
+}
+
+export interface IntegrationTestResponse {
+    id: string;
+    status: string;
+    message: string;
+    health: string;
+}
+
+export async function getIntegrations(): Promise<IntegrationsListResponse> {
+    return request<IntegrationsListResponse>("/api/v1/integrations");
+}
+
+export async function getIntegration(id: string): Promise<IntegrationInfo> {
+    return request<IntegrationInfo>(`/api/v1/integrations/${encodeURIComponent(id)}`);
+}
+
+export async function getIntegrationsHealth(): Promise<IntegrationHealthResponse> {
+    return request<IntegrationHealthResponse>("/api/v1/integrations/health");
+}
+
+export async function testIntegration(id: string): Promise<IntegrationTestResponse> {
+    return request<IntegrationTestResponse>(`/api/v1/integrations/${encodeURIComponent(id)}/test`, {
+        method: "POST",
+        body: JSON.stringify({}),
+    });
+}
+
+// ===== Integration Configuration (K8s Secrets) =====
+
+export interface IntegrationFieldDef {
+    key: string;
+    label: string;
+    placeholder: string;
+    required: boolean;
+    secret: boolean;
+}
+
+export interface IntegrationConfigDef {
+    id: string;
+    name: string;
+    setup_type: string;
+    fields: IntegrationFieldDef[];
+}
+
+export interface IntegrationConfigResponse {
+    integration: IntegrationConfigDef;
+    saved: Record<string, string>;
+    configured: boolean;
+}
+
+export async function getIntegrationConfig(id: string): Promise<IntegrationConfigResponse> {
+    return request<IntegrationConfigResponse>(`/api/v1/integrations/config/${encodeURIComponent(id)}`);
+}
+
+export async function saveIntegrationConfig(id: string, credentials: Record<string, string>): Promise<{ status: string; message: string }> {
+    return request<{ status: string; message: string }>(`/api/v1/integrations/config/${encodeURIComponent(id)}`, {
+        method: "POST",
+        body: JSON.stringify(credentials),
+    });
+}
+
+export async function deleteIntegrationConfig(id: string): Promise<{ status: string }> {
+    return request<{ status: string }>(`/api/v1/integrations/config/${encodeURIComponent(id)}`, {
+        method: "DELETE",
+    });
+}
+
+// ===== Auth & User Management =====
+
+export interface AdminInfo {
+    id: string;
+    name: string;
+    email: string;
+    phone: string;
+    company: string;
+    role: string;
+    cluster_name: string;
+}
+
+export interface UserInfo {
+    id: string;
+    name: string;
+    email: string;
+    phone: string;
+    role: string;
+    permissions: string[];
+    token: string;
+    created_at: string;
+    last_access: string | null;
+}
+
+export interface UsersListResponse {
+    users: UserInfo[];
+    total: number;
+}
+
+export async function getAuthStatus(): Promise<{ setup_complete: boolean }> {
+    return request<{ setup_complete: boolean }>("/api/v1/auth/status");
+}
+
+export async function getAdminInfo(): Promise<AdminInfo> {
+    return request<AdminInfo>("/api/v1/auth/admin");
+}
+
+export async function setupAdmin(data: { name: string; email: string; phone: string; company: string; role: string; cluster_name: string }): Promise<{ status: string; id: string }> {
+    return request<{ status: string; id: string }>("/api/v1/auth/setup", {
+        method: "POST",
+        body: JSON.stringify(data),
+    });
+}
+
+export async function getUsers(): Promise<UsersListResponse> {
+    return request<UsersListResponse>("/api/v1/users");
+}
+
+export async function createUser(data: { name: string; email: string; phone: string; role: string; permissions: string[] }): Promise<{ status: string; id: string; token: string; access_link: string }> {
+    return request<{ status: string; id: string; token: string; access_link: string }>("/api/v1/users", {
+        method: "POST",
+        body: JSON.stringify(data),
+    });
+}
+
+export async function deleteUser(id: string): Promise<{ status: string }> {
+    return request<{ status: string }>(`/api/v1/users/${encodeURIComponent(id)}`, {
+        method: "DELETE",
+    });
+}
+
+export async function verifyUserToken(token: string): Promise<{ valid: boolean; user: { id: string; name: string; email: string; role: string }; company: string }> {
+    return request<{ valid: boolean; user: { id: string; name: string; email: string; role: string }; company: string }>(`/api/v1/auth/verify/${encodeURIComponent(token)}`);
+}
+
+// ===== Knowledge Base =====
+
+export interface KnowledgeEntry {
+    id: string;
+    title: string;
+    category: string;
+    description: string;
+    root_cause: string;
+    fix_action: string;
+    severity: string;
+    service: string;
+    namespace: string;
+    occurrence_count: number;
+    success_rate: number;
+    last_seen_at: string;
+    first_seen_at: string;
+    tags: string[];
+    metadata: Record<string, any>;
+    similarity?: number;
+}
+
+export interface KnowledgeListResponse {
+    entries: KnowledgeEntry[];
+    total: number;
+}
+
+export interface KnowledgeSearchResponse {
+    results: KnowledgeEntry[];
+    query: string;
+    model: string;
+}
+
+export interface KnowledgeStatsResponse {
+    total_entries: number;
+    categories: Record<string, number>;
+    top_services: Array<{ service: string; entries: number; total_occurrences: number }>;
+}
+
+export interface KnowledgeRecommendation {
+    action: string;
+    target: string;
+    confidence: number;
+    reasoning: string;
+    risk: string;
+    similar_incidents?: number;
+    knowledge_base_match?: string | null;
+}
+
+export interface KnowledgeRecommendResponse {
+    recommendations: KnowledgeRecommendation[];
+    query: string;
+    model: string;
+}
+
+export async function getKnowledgeEntries(category?: string): Promise<KnowledgeListResponse> {
+    const path = category
+        ? `/api/v1/knowledge/entries?category=${encodeURIComponent(category)}`
+        : "/api/v1/knowledge/entries";
+    return request<KnowledgeListResponse>(path);
+}
+
+export async function getKnowledgeStats(): Promise<KnowledgeStatsResponse> {
+    return request<KnowledgeStatsResponse>("/api/v1/knowledge/stats");
+}
+
+export async function searchKnowledge(query: string, limit?: number): Promise<KnowledgeSearchResponse> {
+    return request<KnowledgeSearchResponse>("/api/v1/knowledge/search", {
+        method: "POST",
+        body: JSON.stringify({ query, limit: limit || 5, threshold: 0.4 }),
+    });
+}
+
+export async function ingestKnowledge(entry: {
+    title: string;
+    category: string;
+    description: string;
+    root_cause: string;
+    fix_action: string;
+    severity: string;
+    service: string;
+    namespace: string;
+    tags?: string[];
+}): Promise<{ status: string; id: string }> {
+    return request<{ status: string; id: string }>("/api/v1/knowledge/ingest", {
+        method: "POST",
+        body: JSON.stringify(entry),
+    });
+}
+
+export async function autoIngestKnowledge(): Promise<{ status: string; ingested: number; errors: string[] }> {
+    return request<{ status: string; ingested: number; errors: string[] }>("/api/v1/knowledge/auto-ingest", {
+        method: "POST",
+        body: JSON.stringify({}),
+    });
+}
+
+export async function getKnowledgeRecommendations(query: string, service?: string, namespace?: string): Promise<KnowledgeRecommendResponse> {
+    return request<KnowledgeRecommendResponse>("/api/v1/knowledge/recommend", {
+        method: "POST",
+        body: JSON.stringify({ query, service, namespace }),
+    });
+}
+
+export async function submitKnowledgeFeedback(entryId: string, success: boolean): Promise<{ status: string }> {
+    return request<{ status: string }>("/api/v1/knowledge/feedback", {
+        method: "PUT",
+        body: JSON.stringify({ entry_id: entryId, success }),
+    });
+}
+
+// ===== Risk Scoring =====
+
+export interface ServiceRisk {
+    service: string;
+    namespace: string;
+    risk_score: number;
+    risk_level: string;
+    factors: Array<{ type: string; detail: string; weight: number }>;
+    prediction: string;
+    recommended_action: string;
+}
+
+export interface RiskScoresResponse {
+    services: ServiceRisk[];
+    total: number;
+    calculated_at: string;
+}
+
+export interface RiskSummaryResponse {
+    overall_score: number;
+    overall_level: string;
+    total_services_at_risk: number;
+    critical_count: number;
+    high_count: number;
+    medium_count: number;
+    low_count: number;
+    prevented_incidents: number;
+    ai_confidence: number;
+    categories: Record<string, number>;
+    top_risks: Array<{ service: string; namespace: string; score: number; level: string; top_factor: string }>;
+    trend: string;
+}
+
+export interface RiskPrediction {
+    service: string;
+    namespace: string;
+    predicted_issue: string;
+    probability: number;
+    time_horizon: string;
+    evidence: string[];
+    preventive_action: string;
+}
+
+export interface RiskPredictionsResponse {
+    predictions: RiskPrediction[];
+    total: number;
+}
+
+export interface RiskAnalysisResponse {
+    service: string;
+    analysis: {
+        risk_score: number;
+        risk_level: string;
+        summary: string;
+        factors: Array<{ category: string; detail: string; weight: number }>;
+        prediction: string;
+        time_to_failure?: string;
+        recommended_actions: Array<{ action: string; priority: string; impact: string }>;
+        dependencies_at_risk?: string[];
+    };
+    model: string;
+}
+
+export async function getRiskScores(): Promise<RiskScoresResponse> {
+    return request<RiskScoresResponse>("/api/v1/risks/scores");
+}
+
+export async function getRiskSummary(): Promise<RiskSummaryResponse> {
+    return request<RiskSummaryResponse>("/api/v1/risks/summary");
+}
+
+export async function getRiskPredictions(): Promise<RiskPredictionsResponse> {
+    return request<RiskPredictionsResponse>("/api/v1/risks/predictions");
+}
+
+export async function analyzeServiceRisk(service: string, namespace?: string): Promise<RiskAnalysisResponse> {
+    return request<RiskAnalysisResponse>("/api/v1/risks/analyze", {
+        method: "POST",
+        body: JSON.stringify({ service, namespace }),
+    });
+}
+
+// ===== Escalation Chain =====
+
+export interface EscalationConfig {
+    enabled: boolean;
+    primary_phone: string;
+    primary_email: string;
+    primary_slack_user: string;
+    secondary_phone: string;
+    secondary_email: string;
+    phone_delay_min: number;
+    auto_fix_delay_min: number;
+    quiet_start: string;
+    quiet_end: string;
+    min_severity: string;
+    slack_webhook_url: string;
+    twilio_account_sid: string;
+    twilio_auth_token: string;
+    twilio_from_number: string;
+    smtp_host: string;
+    smtp_port: string;
+    smtp_user: string;
+    smtp_password: string;
+}
+
+export interface EscalationStep {
+    level: number;
+    channel: string;
+    status: string;
+    target: string;
+    sent_at: string;
+    message: string;
+    error_msg?: string;
+}
+
+export interface ActiveEscalation {
+    id: string;
+    incident_id: string;
+    incident_title: string;
+    severity: string;
+    status: string;
+    started_at: string;
+    acknowledged_at?: string;
+    acknowledged_by?: string;
+    steps: EscalationStep[];
+    current_level: number;
+}
+
+export interface EscalationActiveResponse {
+    escalations: ActiveEscalation[];
+    total: number;
+}
+
+export interface EscalationHistoryResponse {
+    escalations: ActiveEscalation[];
+    total: number;
+}
+
+export async function getEscalationConfig(): Promise<EscalationConfig> {
+    return request<EscalationConfig>("/api/v1/escalation/config");
+}
+
+export async function updateEscalationConfig(config: Partial<EscalationConfig>): Promise<{ status: string; config: EscalationConfig }> {
+    return request<{ status: string; config: EscalationConfig }>("/api/v1/escalation/config", {
+        method: "PUT",
+        body: JSON.stringify(config),
+    });
+}
+
+export async function triggerEscalation(incidentId: string, title: string, severity: string): Promise<{ status: string; escalation?: ActiveEscalation }> {
+    return request<{ status: string; escalation?: ActiveEscalation }>("/api/v1/escalation/trigger", {
+        method: "POST",
+        body: JSON.stringify({ incident_id: incidentId, title, severity }),
+    });
+}
+
+export async function acknowledgeEscalation(incidentId: string, by: string): Promise<{ status: string }> {
+    return request<{ status: string }>("/api/v1/escalation/acknowledge", {
+        method: "POST",
+        body: JSON.stringify({ incident_id: incidentId, by }),
+    });
+}
+
+export async function getActiveEscalations(): Promise<EscalationActiveResponse> {
+    return request<EscalationActiveResponse>("/api/v1/escalation/active");
+}
+
+export async function getEscalationHistory(): Promise<EscalationHistoryResponse> {
+    return request<EscalationHistoryResponse>("/api/v1/escalation/history");
+}
+
+// ===== Event Stream (Kafka) =====
+
+export interface StreamEvent {
+    type: string;
+    source: string;
+    title: string;
+    detail: string;
+    severity: string;
+    timestamp: string;
+}
+
+export interface EventsResponse {
+    events: StreamEvent[];
+    total: number;
+}
+
+export async function getRecentEvents(): Promise<EventsResponse> {
+    return request<EventsResponse>("/api/v1/events/recent");
+}
+
+// ===== Cache (Redis) =====
+
+export interface CacheStats {
+    connected: boolean;
+    total_keys?: number;
+    active_sessions?: number;
+    memory_used?: string;
+    memory_peak?: string;
+}
+
+export async function getCacheStats(): Promise<CacheStats> {
+    return request<CacheStats>("/api/v1/cache/stats");
+}
+
+// ===== Multi-Cluster Fleet =====
+
+export interface ClusterRegistration {
+    id: string;
+    name: string;
+    environment: string;
+    region: string;
+    provider: string;
+    status: string;
+    health_score: number;
+    workloads: number;
+    nodes: number;
+    pods: number;
+    cpu_percent: number;
+    memory_percent: number;
+    active_incidents: number;
+    last_scan_at: string;
+    created_at: string;
+    discovery_url?: string;
+    monitoring_url?: string;
+}
+
+export interface FleetClustersResponse {
+    clusters: ClusterRegistration[];
+    total: number;
+}
+
+export interface FleetSummaryResponse {
+    total_clusters: number;
+    healthy_clusters: number;
+    warning_clusters: number;
+    critical_clusters: number;
+    fleet_health_score: number;
+    total_workloads: number;
+    total_nodes: number;
+    total_pods: number;
+    total_incidents: number;
+    ai_confidence: number;
+    autonomous_actions: number;
+}
+
+export async function getFleetClusters(): Promise<FleetClustersResponse> {
+    return request<FleetClustersResponse>("/api/v1/fleet/clusters");
+}
+
+export async function getFleetSummary(): Promise<FleetSummaryResponse> {
+    return request<FleetSummaryResponse>("/api/v1/fleet/summary");
+}
+
+export async function registerCluster(data: {
+    name: string;
+    environment: string;
+    region: string;
+    provider: string;
+    discovery_url: string;
+    monitoring_url: string;
+}): Promise<{ status: string; id: string }> {
+    return request<{ status: string; id: string }>("/api/v1/fleet/clusters", {
+        method: "POST",
+        body: JSON.stringify(data),
+    });
+}
+
+export async function removeCluster(id: string): Promise<{ status: string }> {
+    return request<{ status: string }>(`/api/v1/fleet/clusters/${encodeURIComponent(id)}`, {
+        method: "DELETE",
+    });
+}
+
+// ===== Predictive Detection =====
+
+export interface PredictiveResult {
+    resource: string;
+    predicted_issue: string;
+    probability: number;
+    time_to_failure: string;
+    evidence: string[];
+    preventive_action: string;
+    trend_direction: string;
+    confidence: number;
+}
+
+export interface PredictiveModelStats {
+    data_points: number;
+    tracked_resources: number;
+    active_predictions: number;
+    collection_interval: string;
+    history_window: string;
+    algorithms: string[];
+}
+
+export interface PredictivePredictionsResponse {
+    predictions: PredictiveResult[];
+    total: number;
+    model_stats: PredictiveModelStats;
+}
+
+export interface PredictiveExplainResponse {
+    resource: string;
+    explanation: string;
+    root_cause_hypothesis: string;
+    recommended_actions: string[];
+    confidence: number;
+    model: string;
+}
+
+export async function getPredictivePredictions(): Promise<PredictivePredictionsResponse> {
+    return request<PredictivePredictionsResponse>("/api/v1/predictive/predictions");
+}
+
+export async function getPredictiveStats(): Promise<PredictiveModelStats> {
+    return request<PredictiveModelStats>("/api/v1/predictive/stats");
+}
+
+export async function explainPrediction(resource: string, predictedIssue: string, evidence: string[]): Promise<PredictiveExplainResponse> {
+    return request<PredictiveExplainResponse>("/api/v1/predictive/explain", {
+        method: "POST",
+        body: JSON.stringify({ resource, predicted_issue: predictedIssue, evidence }),
+    });
+}
+
+export async function triggerPredictiveCollection(): Promise<{ status: string; data_points: number }> {
+    return request<{ status: string; data_points: number }>("/api/v1/predictive/collect", {
+        method: "POST",
+        body: JSON.stringify({}),
+    });
+}
+
+// ===== Plugin SDK =====
+
+export interface PluginInfo {
+    name: string;
+    version: string;
+    type: string;
+    description: string;
+    author: string;
+    enabled: boolean;
+    detection_count: number;
+    last_run: number | null;
+    error: string | null;
+}
+
+export interface PluginDetection {
+    plugin: string;
+    title: string;
+    severity: string;
+    service: string;
+    namespace: string;
+    evidence: string[];
+    recommendation: string;
+    detected_at: number;
+}
+
+export interface PluginsListResponse {
+    plugins: PluginInfo[];
+    total: number;
+    detectors: number;
+    analyzers: number;
+    actions: number;
+}
+
+export interface PluginDetectionsResponse {
+    detections: PluginDetection[];
+    total: number;
+}
+
+export async function getPlugins(): Promise<PluginsListResponse> {
+    return request<PluginsListResponse>("/api/v1/plugins");
+}
+
+export async function getPluginDetections(): Promise<PluginDetectionsResponse> {
+    return request<PluginDetectionsResponse>("/api/v1/plugins/detections");
+}
+
+export async function runPluginDetectors(): Promise<{ status: string; detections: PluginDetection[]; total: number }> {
+    return request<{ status: string; detections: PluginDetection[]; total: number }>("/api/v1/plugins/run-detectors", {
+        method: "POST",
+        body: JSON.stringify({}),
+    });
+}
+
+export async function installPlugin(code: string, filename: string): Promise<{ status: string; plugins?: string[] }> {
+    return request<{ status: string; plugins?: string[] }>("/api/v1/plugins/install", {
+        method: "POST",
+        body: JSON.stringify({ code, filename }),
+    });
+}
+
+export async function enablePlugin(name: string): Promise<{ status: string }> {
+    return request<{ status: string }>(`/api/v1/plugins/enable/${encodeURIComponent(name)}`, {
+        method: "POST",
+        body: JSON.stringify({}),
+    });
+}
+
+export async function disablePlugin(name: string): Promise<{ status: string }> {
+    return request<{ status: string }>(`/api/v1/plugins/disable/${encodeURIComponent(name)}`, {
+        method: "POST",
+        body: JSON.stringify({}),
+    });
+}
+
+export async function unloadPlugin(name: string): Promise<{ status: string }> {
+    return request<{ status: string }>(`/api/v1/plugins/${encodeURIComponent(name)}`, {
+        method: "DELETE",
+    });
+}
+
+// ===== Incident Reports (Auto-Generated) =====
+
+export interface GeneratedReport {
+    id: string;
+    incident_id: string;
+    title: string;
+    severity: string;
+    duration: string;
+    generated_at: string;
+    resolved_at: string;
+    status: string;
+    content?: string;
+    sections?: {
+        summary: string;
+        root_cause: string;
+        impact: string;
+        actions_taken: number;
+        recommendations: string[];
+    };
+}
+
+export interface ReportsListResponse {
+    reports: GeneratedReport[];
+    total: number;
+}
+
+export async function getGeneratedReports(): Promise<ReportsListResponse> {
+    return request<ReportsListResponse>("/api/v1/reports");
+}
+
+export async function getReportDetail(id: string): Promise<GeneratedReport> {
+    return request<GeneratedReport>(`/api/v1/reports/${encodeURIComponent(id)}`);
+}
+
+export async function getReportPdfUrl(id: string): Promise<string> {
+    return `/api/proxy/reports/${encodeURIComponent(id)}/pdf`;
+}
+
+export async function generateReport(incidentId: string): Promise<{ status: string; report_id: string; title: string }> {
+    return request<{ status: string; report_id: string; title: string }>("/api/v1/reports/generate", {
+        method: "POST",
+        body: JSON.stringify({ incident_id: incidentId }),
+    });
+}
+
+export async function generateAllReports(): Promise<{ status: string; generated: Array<{ report_id: string; incident_id: string; title: string }>; total: number }> {
+    return request<{ status: string; generated: Array<{ report_id: string; incident_id: string; title: string }>; total: number }>("/api/v1/reports/generate-all", {
+        method: "POST",
+        body: JSON.stringify({}),
+    });
+}
+
+// ===== Morning Briefing =====
+
+export interface BriefingIncident {
+    id: string;
+    title: string;
+    severity: string;
+    status: string;
+    service: string;
+    root_cause: string;
+}
+
+export interface BriefingRemediation {
+    action: string;
+    target: string;
+    status: string;
+    message: string;
+    dry_run: boolean;
+}
+
+export interface BriefingResponse {
+    id: string;
+    generated_at: string;
+    period: string;
+    greeting: string;
+    summary: string;
+    sections: {
+        incidents: BriefingIncident[];
+        remediations: BriefingRemediation[];
+        cluster_health: Record<string, string>;
+        guardian: { enabled: boolean; mode: string; runs: number; reports: number; confidence: number };
+        recommendations: string[];
+    };
+    stats: {
+        total_incidents: number;
+        critical_incidents: number;
+        high_incidents: number;
+        remediations_executed: number;
+        successful_remediations: number;
+        failed_remediations: number;
+        guardian_active: boolean;
+        guardian_runs: number;
+    };
+    model: string;
+}
+
+export interface BriefingHistoryResponse {
+    briefings: BriefingResponse[];
+    total: number;
+}
+
+export async function getLatestBriefing(): Promise<BriefingResponse> {
+    return request<BriefingResponse>("/api/v1/briefing/latest");
+}
+
+export async function generateBriefing(): Promise<BriefingResponse> {
+    return request<BriefingResponse>("/api/v1/briefing/generate", {
+        method: "POST",
+        body: JSON.stringify({}),
+    });
+}
+
+export async function getBriefingHistory(): Promise<BriefingHistoryResponse> {
+    return request<BriefingHistoryResponse>("/api/v1/briefing/history");
+}

@@ -1,0 +1,203 @@
+"use client";
+
+// ─── Workload Elasticity Map (space background + double-ring circles) ────────
+
+const NODES = [
+    { label: "API Gateway", ratio: "8 / 10", pressure: "Medium", x: 320, y: 80, color: "#3fb950", ringColor: "#3fb950", r: 42 },
+    { label: "Monitoring", ratio: "4 / 4", pressure: "Low", x: 120, y: 200, color: "#58a6ff", ringColor: "#58a6ff", r: 38 },
+    { label: "AI Engine", ratio: "3 / 6", pressure: "High", x: 320, y: 240, color: "#f85149", ringColor: "#f85149", r: 52 },
+    { label: "Checkout", ratio: "6 / 6", pressure: "High", x: 540, y: 160, color: "#f85149", ringColor: "#f85149", r: 40 },
+    { label: "PostgreSQL", ratio: "5 / 5", pressure: "Low", x: 140, y: 380, color: "#58a6ff", ringColor: "#58a6ff", r: 36 },
+    { label: "Notifications", ratio: "3 / 5", pressure: "Medium", x: 340, y: 420, color: "#f0883e", ringColor: "#f0883e", r: 36 },
+    { label: "Web Frontend", ratio: "4 / 8", pressure: "Medium", x: 540, y: 340, color: "#22d3ee", ringColor: "#22d3ee", r: 40 },
+];
+
+const EDGES = [
+    [0, 2], [0, 3], [1, 2], [2, 3], [2, 5], [4, 2], [5, 6], [3, 6],
+];
+
+export function WorkloadElasticityMap() {
+    return (
+        <div className="rounded-[12px] border border-[#21262d] bg-[#161b22] p-3.5 relative overflow-hidden">
+            {/* Header */}
+            <div className="flex items-center gap-2 mb-2 relative z-10">
+                <h3 className="text-[14px] font-semibold text-[#e6edf3]">Workload Elasticity Map</h3>
+                <span className="w-4 h-4 rounded-full border border-[#30363d] flex items-center justify-center text-[9px] text-[#8b949e]">?</span>
+            </div>
+
+            {/* Legend */}
+            <div className="flex items-center gap-3 mb-2 text-[10px] text-[#8b949e] relative z-10">
+                <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-[#58a6ff]" style={{ boxShadow: "0 0 6px #58a6ff" }} /> Low Pressure</span>
+                <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-[#f0883e]" style={{ boxShadow: "0 0 6px #f0883e" }} /> Medium</span>
+                <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-[#f85149]" style={{ boxShadow: "0 0 6px #f85149" }} /> High Pressure</span>
+            </div>
+
+            {/* Canvas with space background */}
+            <div
+                className="relative rounded-lg overflow-hidden"
+                style={{
+                    height: "380px",
+                    background: `
+                        radial-gradient(ellipse 80% 70% at 50% 50%, rgba(30, 58, 138, 0.20) 0%, transparent 70%),
+                        radial-gradient(ellipse 50% 40% at 20% 30%, rgba(59, 130, 246, 0.12) 0%, transparent 55%),
+                        radial-gradient(ellipse 40% 35% at 80% 70%, rgba(34, 211, 238, 0.08) 0%, transparent 55%),
+                        linear-gradient(180deg, #050a18 0%, #0a1028 50%, #050a18 100%)
+                    `,
+                }}
+            >
+                {/* Particle starfield */}
+                <ParticleField />
+
+                {/* Right-side controls */}
+                <div className="absolute top-3 right-3 z-20 flex flex-col gap-1.5">
+                    <CtrlBtn>
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <circle cx="12" cy="12" r="3" />
+                            <line x1="12" y1="1" x2="12" y2="4" /><line x1="12" y1="20" x2="12" y2="23" />
+                            <line x1="1" y1="12" x2="4" y2="12" /><line x1="20" y1="12" x2="23" y2="12" />
+                        </svg>
+                    </CtrlBtn>
+                    <CtrlBtn>−</CtrlBtn>
+                    <CtrlBtn>
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <circle cx="12" cy="12" r="10" /><circle cx="12" cy="12" r="4" />
+                        </svg>
+                    </CtrlBtn>
+                    <CtrlBtn>
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <polyline points="15 3 21 3 21 9" /><polyline points="9 21 3 21 3 15" /><line x1="21" y1="3" x2="14" y2="10" /><line x1="3" y1="21" x2="10" y2="14" />
+                        </svg>
+                    </CtrlBtn>
+                </div>
+
+                {/* SVG */}
+                <svg viewBox="0 0 660 480" className="absolute inset-0 w-full h-full z-10" preserveAspectRatio="xMidYMid meet">
+                    <defs>
+                        {[
+                            { name: "wem-red", color: "#f85149" },
+                            { name: "wem-green", color: "#3fb950" },
+                            { name: "wem-blue", color: "#58a6ff" },
+                            { name: "wem-orange", color: "#f0883e" },
+                            { name: "wem-cyan", color: "#22d3ee" },
+                        ].map(({ name, color }) => (
+                            <filter key={name} id={name} x="-50%" y="-50%" width="200%" height="200%">
+                                <feGaussianBlur stdDeviation="4" result="b" />
+                                <feFlood floodColor={color} floodOpacity="0.5" />
+                                <feComposite in2="b" operator="in" />
+                                <feMerge><feMergeNode /><feMergeNode in="SourceGraphic" /></feMerge>
+                            </filter>
+                        ))}
+                    </defs>
+
+                    {/* Connection lines (red/orange) */}
+                    {EDGES.map(([a, b], i) => {
+                        const from = NODES[a];
+                        const to = NODES[b];
+                        const isHigh = from.pressure === "High" || to.pressure === "High";
+                        const color = isHigh ? "#f85149" : "#f0883e";
+                        return (
+                            <line
+                                key={i}
+                                x1={from.x} y1={from.y}
+                                x2={to.x} y2={to.y}
+                                stroke={color}
+                                strokeWidth="1.5"
+                                strokeOpacity="0.5"
+                                style={{ filter: `drop-shadow(0 0 3px ${color})` }}
+                            />
+                        );
+                    })}
+                    {/* Animated dots on connections */}
+                    {EDGES.slice(0, 5).map(([a, b], i) => {
+                        const from = NODES[a];
+                        const to = NODES[b];
+                        const color = from.pressure === "High" ? "#f85149" : "#f0883e";
+                        return (
+                            <circle key={`dot-${i}`} r="2" fill={color} opacity="0.9">
+                                <animateMotion dur={`${2 + i * 0.4}s`} repeatCount="indefinite" path={`M${from.x},${from.y} L${to.x},${to.y}`} />
+                            </circle>
+                        );
+                    })}
+
+                    {/* Nodes */}
+                    {NODES.map((n, i) => {
+                        const filterName = n.color === "#f85149" ? "wem-red"
+                            : n.color === "#3fb950" ? "wem-green"
+                                : n.color === "#58a6ff" ? "wem-blue"
+                                    : n.color === "#f0883e" ? "wem-orange" : "wem-cyan";
+                        const pressureColor = n.pressure === "High" ? "#f85149" : n.pressure === "Medium" ? "#f0883e" : "#58a6ff";
+                        return (
+                            <g key={i}>
+                                {/* Outer glow ring */}
+                                <circle cx={n.x} cy={n.y} r={n.r + 8} fill="none" stroke={n.ringColor} strokeWidth="1" strokeOpacity="0.3" filter={`url(#${filterName})`} />
+                                {/* Main ring */}
+                                <circle cx={n.x} cy={n.y} r={n.r} fill="none" stroke={n.ringColor} strokeWidth="2.5" style={{ filter: `drop-shadow(0 0 8px ${n.ringColor})` }} />
+                                {/* Inner dark fill */}
+                                <circle cx={n.x} cy={n.y} r={n.r - 4} fill="#080c18" fillOpacity="0.95" stroke={n.ringColor} strokeWidth="0.5" strokeOpacity="0.3" />
+
+                                {/* Hexagonal icon */}
+                                <g transform={`translate(${n.x}, ${n.y - 20})`}>
+                                    <polygon points="0,-10 9,-5 9,5 0,10 -9,5 -9,-5" fill={`${n.ringColor}20`} stroke={n.ringColor} strokeWidth="1" strokeOpacity="0.7" />
+                                    <g style={{ filter: `drop-shadow(0 0 3px ${n.ringColor})` }}>
+                                        <path d="M0,-5 L5,-2.5 L0,0 L-5,-2.5 Z" fill={n.ringColor} fillOpacity="0.5" stroke={n.ringColor} strokeWidth="0.5" strokeLinejoin="round" />
+                                        <path d="M-5,-2.5 L0,0 L0,5 L-5,2.5 Z" fill={n.ringColor} fillOpacity="0.2" stroke={n.ringColor} strokeWidth="0.5" strokeLinejoin="round" />
+                                        <path d="M5,-2.5 L0,0 L0,5 L5,2.5 Z" fill={n.ringColor} fillOpacity="0.35" stroke={n.ringColor} strokeWidth="0.5" strokeLinejoin="round" />
+                                    </g>
+                                </g>
+
+                                {/* Label */}
+                                <text x={n.x} y={n.y + 6} textAnchor="middle" fontSize="12" fontWeight="600" fill="#e6edf3">{n.label}</text>
+                                {/* Ratio */}
+                                <text x={n.x} y={n.y + 20} textAnchor="middle" fontSize="11" fill="#e6edf3" fontFamily="var(--font-mono)" fontWeight="500">{n.ratio}</text>
+                                {/* Pressure label */}
+                                <text x={n.x} y={n.y + 33} textAnchor="middle" fontSize="10" fill={pressureColor} fontWeight="600" fontStyle="italic">{n.pressure}</text>
+                            </g>
+                        );
+                    })}
+                </svg>
+            </div>
+        </div>
+    );
+}
+
+function CtrlBtn({ children }: { children: React.ReactNode }) {
+    return (
+        <button className="w-8 h-8 rounded-lg bg-[#0d1117]/80 border border-[#30363d] flex items-center justify-center text-[#8b949e] hover:text-[#e6edf3] hover:border-[#484f58] transition-colors text-[13px] font-light backdrop-blur-sm">
+            {children}
+        </button>
+    );
+}
+
+function ParticleField() {
+    const particles = Array.from({ length: 120 }, (_, i) => {
+        const s1 = (i * 9301 + 49297) % 233280 / 233280;
+        const s2 = (i * 1103 + 12345) % 65536 / 65536;
+        const s3 = (i * 8121 + 28411) % 134456 / 134456;
+        return { x: s1 * 100, y: s2 * 100, size: s3 * 1.8 + 0.5, opacity: s3 * 0.6 + 0.15 };
+    });
+
+    return (
+        <div className="absolute inset-0 overflow-hidden pointer-events-none">
+            {particles.map((p, i) => (
+                <div
+                    key={i}
+                    className="absolute rounded-full"
+                    style={{
+                        left: `${p.x}%`,
+                        top: `${p.y}%`,
+                        width: `${p.size}px`,
+                        height: `${p.size}px`,
+                        backgroundColor: i % 4 === 0 ? "#58a6ff" : i % 7 === 0 ? "#22d3ee" : i % 11 === 0 ? "#a371f7" : "#1e3a5f",
+                        opacity: p.opacity,
+                        boxShadow: i % 6 === 0 ? `0 0 4px currentColor` : undefined,
+                        animation: i % 8 === 0 ? `wi-pulse ${2 + (i % 5)}s ease-in-out infinite` : undefined,
+                    }}
+                />
+            ))}
+            {/* Nebula glow blobs */}
+            <div className="absolute top-[20%] left-[40%] w-[200px] h-[200px] rounded-full bg-blue-500/8 blur-[60px]" />
+            <div className="absolute bottom-[25%] right-[20%] w-[150px] h-[150px] rounded-full bg-cyan-500/6 blur-[50px]" />
+            <div className="absolute top-[50%] left-[15%] w-[120px] h-[120px] rounded-full bg-purple-500/5 blur-[45px]" />
+        </div>
+    );
+}

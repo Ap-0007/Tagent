@@ -101,20 +101,31 @@ nightGuardian:
 # ===== ESCALATION =====
 
 escalation:
+  enabled: false
   phoneDelayMin: "3"
   autoFixDelayMin: "10"
   quietStart: "22:00"
   quietEnd: "06:00"
+  minSeverity: "high"
 
 # ===== SECRETS =====
 
 secrets:
   databaseUrl: "postgresql://tagent:tagent123@tagent-postgres:5432/tagent?sslmode=disable"
-  redisUrl: ""
+  redisUrl: "redis://tagent-redis:6379"
+  kafkaBrokers: "tagent-kafka:9092"
   slackWebhookUrl: ""
   smtpHost: ""
   smtpUser: ""
   smtpPassword: ""
+
+# ===== KAFKA =====
+
+kafka:
+  enabled: true
+  persistence:
+    enabled: false
+    size: 5Gi
 
 # ===== POSTGRESQL =====
 
@@ -124,6 +135,12 @@ postgres:
   persistence:
     enabled: false
     size: 5Gi
+
+# ===== PROMETHEUS =====
+
+prometheus:
+  serviceMonitor:
+    enabled: false # Set to true if you have Prometheus Operator installed
 
 # ===== INGRESS =====
 
