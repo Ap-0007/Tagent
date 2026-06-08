@@ -1,16 +1,18 @@
 import { Terminal } from "lucide-react";
 
 const commands = [
-    { cmd: "tagent status", desc: "Show cluster health summary" },
-    { cmd: "tagent incidents", desc: "List active incidents" },
-    { cmd: "tagent incidents INC-0142", desc: "Show incident detail" },
-    { cmd: "tagent incidents --stored", desc: "List persisted remediation incidents" },
-    { cmd: "tagent analyze INC-0142", desc: "Run AI root cause analysis" },
-    { cmd: "tagent remediate INC-0142 --dry-run", desc: "Infer and preview remediation for an incident" },
-    { cmd: "tagent remediate restart-pod production/checkout-api --dry-run", desc: "Preview explicit remediation" },
-    { cmd: "tagent guardian enable", desc: "Enable Night Guardian mode" },
-    { cmd: "tagent guardian disable", desc: "Disable Night Guardian mode" },
-    { cmd: "tagent chat 'why is checkout slow?'", desc: "Ask AI a question" },
+    { cmd: "tagent status", desc: "Show cluster health summary (nodes, pods, deployments)" },
+    { cmd: "tagent incidents", desc: "List all active incidents" },
+    { cmd: "tagent incidents INC-0001", desc: "Show detailed incident with evidence and root cause" },
+    { cmd: "tagent chat 'why is checkout slow?'", desc: "Ask AI a question about your cluster" },
+    { cmd: "tagent analyze 'high latency on payment service'", desc: "AI analyzes a problem using live cluster data" },
+    { cmd: "tagent risks", desc: "Show service risk scores (which services will fail next)" },
+    { cmd: "tagent remediate restart-pod -n production -t payment-api-xyz", desc: "Restart a failing pod" },
+    { cmd: "tagent remediate restart-pod -n production -t payment-api-xyz --dry-run", desc: "Preview remediation without executing" },
+    { cmd: "tagent remediate scale-deployment -n production -t checkout-api", desc: "Scale up a deployment" },
+    { cmd: "tagent guardian", desc: "Show Night Guardian autonomous mode status" },
+    { cmd: "tagent version", desc: "Show CLI version" },
+    { cmd: "tagent --api http://tagent.company.com:8080 status", desc: "Connect to a remote Tagent instance" },
 ];
 
 export default function CLIPage() {
