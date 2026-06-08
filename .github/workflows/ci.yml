@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        service: [api-gateway, discovery, monitoring, remediation]
+        service: [api-gateway, discovery, monitoring, remediation, notification]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5

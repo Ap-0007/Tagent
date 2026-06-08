@@ -1,0 +1,195 @@
+"use client";
+
+import { useState } from "react";
+
+// ─── Deployment Health Matrix ────────────────────────────────────────────────
+
+interface Deployment {
+    name: string;
+    env: string;
+    namespace: string;
+    healthScore: number;
+    replicas: string;
+    version: string;
+    age: string;
+    cpu: number;
+    memory: number;
+    restartTrend: "stable" | "rising" | "falling";
+}
+
+const DEPLOYMENTS: Deployment[] = [
+    { name: "Tagent AI Engine", env: "prod", namespace: "default", healthScore: 98, replicas: "6/6", version: "v2.4.1", age: "2h 15m", cpu: 42, memory: 61, restartTrend: "stable" },
+    { name: "Tagent API Gateway", env: "prod", namespace: "default", healthScore: 96, replicas: "4/4", version: "v3.1.0", age: "45m", cpu: 38, memory: 54, restartTrend: "stable" },
+    { name: "Tagent Monitoring", env: "prod", namespace: "monitoring", healthScore: 93, replicas: "3/3", version: "v1.9.3", age: "1h 10m", cpu: 51, memory: 66, restartTrend: "stable" },
+    { name: "PostgreSQL", env: "database", namespace: "database", healthScore: 95, replicas: "2/2", version: "v2.0.4", age: "15.4h", cpu: 29, memory: 43, restartTrend: "stable" },
+    { name: "Tagent Discovery", env: "prod", namespace: "default", healthScore: 91, replicas: "3/3", version: "v1.7.8", age: "2h 22m", cpu: 33, memory: 57, restartTrend: "rising" },
+    { name: "Tagent Notification", env: "prod", namespace: "default", healthScore: 88, replicas: "2/3", version: "v1.5.5", age: "1h 55m", cpu: 67, memory: 78, restartTrend: "rising" },
+    { name: "Ollama", env: "prod", namespace: "ai", healthScore: 56, replicas: "0/2", version: "v0.5.7", age: "2h 40m", cpu: 0, memory: 0, restartTrend: "rising" },
+    { name: "Tagent Remediation", env: "prod", namespace: "default", healthScore: 90, replicas: "2/2", version: "v1.3.2", age: "50m", cpu: 0, memory: 0, restartTrend: "stable" },
+];
+
+export function DeploymentHealthMatrix() {
+    const [namespace, setNamespace] = useState("all");
+    const [nsOpen, setNsOpen] = useState(false);
+    const [view, setView] = useState<"grid" | "list">("grid");
+    const [filterOpen, setFilterOpen] = useState(false);
+    const [healthFilter, setHealthFilter] = useState<"all" | "healthy" | "degraded" | "critical">("all");
+    const [menuOpen, setMenuOpen] = useState(false);
+
+    const namespaces = ["all", ...Array.from(new Set(DEPLOYMENTS.map(d => d.namespace)))];
+
+    const filtered = DEPLOYMENTS.filter(d => {
+        if (namespace !== "all" && d.namespace !== namespace) return false;
+        if (healthFilter === "healthy" && d.healthScore < 90) return false;
+        if (healthFilter === "degraded" && (d.healthScore >= 90 || d.healthScore < 60)) return false;
+        if (healthFilter === "critical" && d.healthScore >= 60) return false;
+        return true;
+    });
+
+    return (
+        <div className="rounded-[12px] border border-[#21262d] bg-[#161b22] p-3.5">
+            {/* Header */}
+            <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2.5">
+                    <h3 className="text-[14px] font-semibold text-[#e6edf3]">Deployment Health Matrix</h3>
+                    <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-[#3fb950]/10 border border-[#3fb950]/30">
+                        <span className="w-1.5 h-1.5 rounded-full bg-[#3fb950]" style={{ boxShadow: "0 0 6px #3fb950", animation: "wi-pulse 2s infinite" }} />
+                        <span className="text-[10px] text-[#3fb950] font-semibold">Live</span>
+                    </div>
+                </div>
+                <div className="flex items-center gap-2">
+                    {/* Namespace dropdown */}
+                    <div className="relative">
+                        <button onClick={() => { setNsOpen(o => !o); setFilterOpen(false); setMenuOpen(false); }} className="flex items-center gap-1 h-7 px-2.5 rounded-md bg-[#0d1117] border border-[#30363d] text-[11px] text-[#8b949e] hover:text-[#e6edf3] hover:border-[#484f58] transition-colors">
+                            {namespace === "all" ? "All Namespaces" : namespace}
+                            <svg width="9" height="9" viewBox="0 0 12 12" fill="none" className={`transition-transform ${nsOpen ? "rotate-180" : ""}`}><path d="M2 4L6 8L10 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                        </button>
+                        {nsOpen && (
+                            <div className="absolute top-full mt-1 right-0 z-30 w-40 rounded-md bg-[#161b22] border border-[#30363d] shadow-[0_8px_24px_rgba(0,0,0,0.5)] py-1">
+                                {namespaces.map(ns => (
+                                    <button key={ns} onClick={() => { setNamespace(ns); setNsOpen(false); }} className={`w-full text-left px-3 py-1.5 text-[11.5px] hover:bg-[#21262d] ${namespace === ns ? "text-[#58a6ff]" : "text-[#e6edf3]"}`}>{ns === "all" ? "All Namespaces" : ns}</button>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                    {/* Grid/List toggle */}
+                    <button onClick={() => setView(v => v === "grid" ? "list" : "grid")} title={view === "grid" ? "Switch to list" : "Switch to grid"} className={`w-7 h-7 rounded-md flex items-center justify-center transition-colors ${view === "grid" ? "bg-[#1f6feb]/20 border border-[#1f6feb]/50 text-[#58a6ff]" : "bg-[#0d1117] border border-[#30363d] text-[#8b949e] hover:text-[#e6edf3]"}`}>
+                        {view === "grid" ? (
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="3" y="3" width="4" height="4" rx="1" /><rect x="10" y="3" width="4" height="4" rx="1" /><rect x="17" y="3" width="4" height="4" rx="1" /><rect x="3" y="10" width="4" height="4" rx="1" /><rect x="10" y="10" width="4" height="4" rx="1" /><rect x="17" y="10" width="4" height="4" rx="1" /><rect x="3" y="17" width="4" height="4" rx="1" /><rect x="10" y="17" width="4" height="4" rx="1" /><rect x="17" y="17" width="4" height="4" rx="1" /></svg>
+                        ) : (
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="8" y1="6" x2="21" y2="6" /><line x1="8" y1="12" x2="21" y2="12" /><line x1="8" y1="18" x2="21" y2="18" /><line x1="3" y1="6" x2="3.01" y2="6" /><line x1="3" y1="12" x2="3.01" y2="12" /><line x1="3" y1="18" x2="3.01" y2="18" /></svg>
+                        )}
+                    </button>
+                    {/* Filter */}
+                    <div className="relative">
+                        <button onClick={() => { setFilterOpen(o => !o); setNsOpen(false); setMenuOpen(false); }} title="Filter by health" className={`w-7 h-7 rounded-md flex items-center justify-center transition-colors ${healthFilter !== "all" ? "bg-[#1f6feb]/20 border border-[#1f6feb]/50 text-[#58a6ff]" : "bg-[#0d1117] border border-[#30363d] text-[#8b949e] hover:text-[#e6edf3]"}`}>
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" /></svg>
+                        </button>
+                        {filterOpen && (
+                            <div className="absolute top-full mt-1 right-0 z-30 w-36 rounded-md bg-[#161b22] border border-[#30363d] shadow-[0_8px_24px_rgba(0,0,0,0.5)] py-1">
+                                {(["all", "healthy", "degraded", "critical"] as const).map(f => (
+                                    <button key={f} onClick={() => { setHealthFilter(f); setFilterOpen(false); }} className={`w-full text-left px-3 py-1.5 text-[11.5px] capitalize hover:bg-[#21262d] ${healthFilter === f ? "text-[#58a6ff]" : "text-[#e6edf3]"}`}>{f === "all" ? "All Health" : f}</button>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                    {/* Menu */}
+                    <div className="relative">
+                        <button onClick={() => { setMenuOpen(o => !o); setNsOpen(false); setFilterOpen(false); }} className="w-7 h-7 rounded-md bg-[#0d1117] border border-[#30363d] flex items-center justify-center text-[#8b949e] hover:text-[#e6edf3] hover:border-[#484f58] transition-colors">
+                            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><circle cx="3" cy="8" r="1.5" /><circle cx="8" cy="8" r="1.5" /><circle cx="13" cy="8" r="1.5" /></svg>
+                        </button>
+                        {menuOpen && (
+                            <div className="absolute top-full mt-1 right-0 z-30 w-40 rounded-md bg-[#161b22] border border-[#30363d] shadow-[0_8px_24px_rgba(0,0,0,0.5)] py-1">
+                                <button onClick={() => setMenuOpen(false)} className="w-full text-left px-3 py-1.5 text-[11.5px] text-[#e6edf3] hover:bg-[#21262d]">Refresh data</button>
+                                <button onClick={() => setMenuOpen(false)} className="w-full text-left px-3 py-1.5 text-[11.5px] text-[#e6edf3] hover:bg-[#21262d]">Export as JSON</button>
+                                <button onClick={() => { setNamespace("all"); setHealthFilter("all"); setMenuOpen(false); }} className="w-full text-left px-3 py-1.5 text-[11.5px] text-[#e6edf3] hover:bg-[#21262d]">Reset filters</button>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            </div>
+            <p className="text-[10.5px] text-[#8b949e] mb-3">Real-time health, performance, and status of all deployments</p>
+
+            {filtered.length === 0 && (
+                <div className="py-8 text-center">
+                    <p className="text-[12px] text-[#8b949e]">No deployments match filters.</p>
+                    <button onClick={() => { setNamespace("all"); setHealthFilter("all"); }} className="mt-2 text-[11px] text-[#58a6ff]">Clear filters</button>
+                </div>
+            )}
+
+            {filtered.length > 0 && view === "grid" && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-2.5">
+                    {filtered.map((d, i) => <DeploymentCard key={i} deployment={d} />)}
+                </div>
+            )}
+
+            {filtered.length > 0 && view === "list" && (
+                <div className="space-y-1.5">
+                    {filtered.map((d, i) => <DeploymentListRow key={i} deployment={d} />)}
+                </div>
+            )}
+        </div>
+    );
+}
+
+// ─── Grid Card ───────────────────────────────────────────────────────────────
+
+function DeploymentCard({ deployment: d }: { deployment: Deployment }) {
+    const scoreColor = d.healthScore >= 90 ? "#3fb950" : d.healthScore >= 70 ? "#f0883e" : "#f85149";
+    const r = 22;
+    const c = 2 * Math.PI * r;
+    const offset = c - (d.healthScore / 100) * c;
+
+    return (
+        <div className="rounded-lg bg-[#0d1117] border border-[#21262d] p-2.5 hover:border-[#30363d] transition-colors">
+            <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full" style={{ background: scoreColor, boxShadow: `0 0 4px ${scoreColor}` }} />
+                    <span className="text-[11px] font-semibold text-[#e6edf3] truncate">{d.name}</span>
+                </div>
+                <span className="text-[9px] px-1.5 py-0.5 rounded bg-[#21262d] text-[#8b949e] font-mono">{d.env}</span>
+            </div>
+            <div className="flex items-center gap-3 mb-2">
+                <div className="relative shrink-0">
+                    <svg width="50" height="50" viewBox="0 0 50 50">
+                        <circle cx="25" cy="25" r={r} fill="none" stroke="#21262d" strokeWidth="3.5" />
+                        <circle cx="25" cy="25" r={r} fill="none" stroke={scoreColor} strokeWidth="3.5" strokeLinecap="round" strokeDasharray={c} strokeDashoffset={offset} transform="rotate(-90 25 25)" style={{ filter: `drop-shadow(0 0 3px ${scoreColor})` }} />
+                    </svg>
+                    <div className="absolute inset-0 flex items-center justify-center">
+                        <span className="text-[13px] font-bold font-mono" style={{ color: scoreColor }}>{d.healthScore}</span>
+                    </div>
+                </div>
+                <div className="grid grid-cols-3 gap-x-2 gap-y-0.5 text-[9px] flex-1">
+                    <span className="text-[#8b949e]">Replicas</span><span className="text-[#8b949e]">Version</span><span className="text-[#8b949e]">Age</span>
+                    <span className="text-[#e6edf3] font-mono font-semibold">{d.replicas}</span>
+                    <span className="text-[#e6edf3] font-mono font-semibold">{d.version}</span>
+                    <span className="text-[#e6edf3] font-mono font-semibold">{d.age}</span>
+                </div>
+            </div>
+            <div className="grid grid-cols-3 gap-1 text-center">
+                <div><p className="text-[10px] text-[#8b949e]">CPU</p><p className="text-[11px] font-bold text-[#e6edf3] font-mono">{d.cpu}%</p></div>
+                <div><p className="text-[10px] text-[#8b949e]">Memory</p><p className="text-[11px] font-bold text-[#e6edf3] font-mono">{d.memory}%</p></div>
+                <div><p className="text-[10px] text-[#8b949e]">Restart</p><p className="text-[11px] font-bold font-mono" style={{ color: d.restartTrend === "stable" ? "#3fb950" : "#f0883e" }}>{d.restartTrend === "stable" ? "→" : "↗"}</p></div>
+            </div>
+        </div>
+    );
+}
+
+// ─── List Row ────────────────────────────────────────────────────────────────
+
+function DeploymentListRow({ deployment: d }: { deployment: Deployment }) {
+    const scoreColor = d.healthScore >= 90 ? "#3fb950" : d.healthScore >= 70 ? "#f0883e" : "#f85149";
+    return (
+        <div className="flex items-center gap-3 px-3 py-2 rounded-md bg-[#0d1117] border border-[#21262d] hover:border-[#30363d] transition-colors">
+            <span className="w-2 h-2 rounded-full shrink-0" style={{ background: scoreColor, boxShadow: `0 0 4px ${scoreColor}` }} />
+            <span className="text-[11.5px] font-semibold text-[#e6edf3] w-[160px] truncate">{d.name}</span>
+            <span className="text-[10px] text-[#8b949e] font-mono w-[60px]">{d.namespace}</span>
+            <span className="text-[11px] font-bold font-mono w-[30px]" style={{ color: scoreColor }}>{d.healthScore}</span>
+            <span className="text-[10px] text-[#8b949e] font-mono w-[40px]">{d.replicas}</span>
+            <span className="text-[10px] text-[#8b949e] font-mono w-[50px]">{d.version}</span>
+            <span className="text-[10px] text-[#8b949e] font-mono w-[50px]">CPU {d.cpu}%</span>
+            <span className="text-[10px] text-[#8b949e] font-mono w-[50px]">MEM {d.memory}%</span>
+            <span className="text-[10px] font-mono ml-auto" style={{ color: d.restartTrend === "stable" ? "#3fb950" : "#f0883e" }}>{d.restartTrend}</span>
+        </div>
+    );
+}

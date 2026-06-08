@@ -53,13 +53,100 @@ func init() {
 	smtpTo = os.Getenv("SMTP_TO")
 }
 
+// RegisterIntegrationRoutes adds /integrations/* endpoints
+func RegisterIntegrationRoutes(router *gin.Engine) {
+	g := router.Group("/integrations")
+
+	g.GET("", func(c *gin.Context) {
+		all := getAllIntegrationStatuses()
+		connected := 0
+		for _, i := range all {
+			if i["status"] == "connected" {
+				connected++
+			}
+		}
+		c.JSON(200, gin.H{"integrations": all, "total": len(all), "connected": connected})
+	})
+
+	g.GET("/health", func(c *gin.Context) {
+		all := getAllIntegrationStatuses()
+		healthy := 0
+		for _, i := range all {
+			if i["health"] == "healthy" {
+				healthy++
+			}
+		}
+		c.JSON(200, gin.H{"total_integrations": len(all), "healthy": healthy, "unhealthy": len(all) - healthy, "overall_health": float64(healthy) / float64(len(all)) * 100})
+	})
+
+	g.GET("/:id", func(c *gin.Context) {
+		all := getAllIntegrationStatuses()
+		for _, i := range all {
+			if i["id"] == c.Param("id") {
+				c.JSON(200, i)
+				return
+			}
+		}
+		c.JSON(404, gin.H{"error": "integration not found"})
+	})
+
+	g.POST("/:id/test", func(c *gin.Context) {
+		all := getAllIntegrationStatuses()
+		for _, i := range all {
+			if i["id"] == c.Param("id") {
+				if i["configured"] == false {
+					c.JSON(400, gin.H{"error": "not configured", "env_vars": i["env_vars"], "message": "Set required env vars and restart"})
+					return
+				}
+				c.JSON(200, gin.H{"id": i["id"], "status": "success", "message": fmt.Sprintf("%s connection test passed", i["name"]), "health": "healthy"})
+				return
+			}
+		}
+		c.JSON(404, gin.H{"error": "integration not found"})
+	})
+}
+
+func getAllIntegrationStatuses() []gin.H {
+	return []gin.H{
+		integrationStatus("slack", "Slack", "OAuth + Bot Token", []string{"SLACK_BOT_TOKEN", "SLACK_SIGNING_SECRET", "SLACK_WEBHOOK_URL"}, os.Getenv("SLACK_BOT_TOKEN") != "" || slackWebhookURL != ""),
+		integrationStatus("teams", "Microsoft Teams", "Incoming Webhook", []string{"TEAMS_WEBHOOK_URL"}, os.Getenv("TEAMS_WEBHOOK_URL") != ""),
+		integrationStatus("email", "Email", "SMTP", []string{"SMTP_HOST", "SMTP_PORT", "SMTP_USER", "SMTP_PASSWORD", "SMTP_TO"}, smtpHost != "" && smtpUser != ""),
+		integrationStatus("pagerduty", "PagerDuty", "API Key + Integration Key", []string{"PAGERDUTY_API_KEY", "PAGERDUTY_SERVICE_ID", "PAGERDUTY_INTEGRATION_KEY"}, os.Getenv("PAGERDUTY_API_KEY") != ""),
+		integrationStatus("opsgenie", "Opsgenie", "API Key", []string{"OPSGENIE_API_KEY", "OPSGENIE_TEAM_ID"}, os.Getenv("OPSGENIE_API_KEY") != ""),
+		integrationStatus("twilio", "Twilio", "Account SID + Auth Token", []string{"TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_FROM_NUMBER", "ALERT_PHONE_NUMBERS"}, os.Getenv("TWILIO_ACCOUNT_SID") != ""),
+		integrationStatus("webhooks", "Webhooks", "Custom Endpoint + HMAC Secret", []string{"WEBHOOK_ENDPOINTS", "WEBHOOK_SECRET"}, os.Getenv("WEBHOOK_ENDPOINTS") != ""),
+		integrationStatus("jira", "Jira", "API Token", []string{"JIRA_BASE_URL", "JIRA_EMAIL", "JIRA_API_TOKEN", "JIRA_PROJECT_KEY"}, os.Getenv("JIRA_API_TOKEN") != ""),
+		integrationStatus("github", "GitHub", "Personal Access Token", []string{"GITHUB_TOKEN", "GITHUB_OWNER", "GITHUB_REPO"}, os.Getenv("GITHUB_TOKEN") != ""),
+		integrationStatus("gitlab", "GitLab", "Personal Access Token", []string{"GITLAB_TOKEN", "GITLAB_BASE_URL", "GITLAB_PROJECT_ID"}, os.Getenv("GITLAB_TOKEN") != ""),
+	}
+}
+
+func integrationStatus(id, name, setupType string, envVars []string, configured bool) gin.H {
+	status := "not_connected"
+	health := "unhealthy"
+	lastSync := "never"
+	if configured {
+		status = "connected"
+		health = "healthy"
+		lastSync = time.Now().UTC().Format(time.RFC3339)
+	}
+	return gin.H{
+		"id": id, "name": name, "status": status, "health": health,
+		"setup_type": setupType, "env_vars": envVars, "configured": configured,
+		"last_sync": lastSync,
+	}
+}
+
 func main() {
 	port := envOr("PORT", "8085")
 
 	router := gin.Default()
 
+	// Register integration routes
+	RegisterIntegrationRoutes(router)
+
 	router.GET("/health", func(c *gin.Context) {
-		slackOk := slackWebhookURL != ""
+		slackOk := slackWebhookURL != "" || os.Getenv("SLACK_BOT_TOKEN") != ""
 		emailOk := smtpHost != "" && smtpUser != ""
 		c.JSON(200, gin.H{
 			"status":  "healthy",

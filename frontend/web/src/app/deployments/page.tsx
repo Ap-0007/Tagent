@@ -1,72 +1,42 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { getDeployments, type DeploymentInfo } from "@/lib/api";
-import { GitBranch, AlertTriangle, CheckCircle, Loader2, WifiOff } from "lucide-react";
+import { DeploymentStatsRow } from "@/components/deployments/DeploymentStatsRow";
+import { DeploymentHealthMatrix } from "@/components/deployments/DeploymentHealthMatrix";
+import { AIDeploymentInsights } from "@/components/deployments/AIDeploymentInsights";
+import { DependencyImpactMap } from "@/components/deployments/DependencyImpactMap";
+import { RolloutTimeline } from "@/components/deployments/RolloutTimeline";
+import { VersionIntelligence } from "@/components/deployments/VersionIntelligence";
+import { LiveActivityFeed } from "@/components/deployments/LiveActivityFeed";
 
 export default function DeploymentsPage() {
-    const [deployments, setDeployments] = useState<DeploymentInfo[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
-
-    useEffect(() => {
-        let interval: NodeJS.Timeout;
-        async function fetchData() {
-            try {
-                const data = await getDeployments();
-                setDeployments(data || []);
-                setError(null);
-            } catch (e: any) {
-                setError(e.message);
-            } finally {
-                setLoading(false);
-            }
-        }
-        fetchData();
-        interval = setInterval(fetchData, 15000);
-        return () => clearInterval(interval);
-    }, []);
-
     return (
-        <div className="flex-1 overflow-y-auto scrollbar">
-            <header className="px-6 py-5 border-b border-zinc-800/60">
-                <div className="flex items-center justify-between">
-                    <div>
-                        <h1 className="text-lg font-semibold text-zinc-100">Deployments</h1>
-                        <p className="text-sm text-zinc-500 mt-0.5">{loading ? "Loading..." : `${deployments.length} deployments from Discovery Service`}</p>
-                    </div>
-                    {loading && <Loader2 className="w-4 h-4 text-zinc-500 animate-spin" />}
-                    {error && <span className="flex items-center gap-1 text-[10px] text-amber-400"><WifiOff className="w-3 h-3" />offline</span>}
+        <div className="flex-1 overflow-y-auto wi-scrollbar bg-[#0d1117]">
+            <style jsx global>{`
+                .wi-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
+                .wi-scrollbar::-webkit-scrollbar-track { background: #161b22; }
+                .wi-scrollbar::-webkit-scrollbar-thumb { background: #30363d; border-radius: 3px; }
+                @keyframes wi-dash { to { stroke-dashoffset: -24; } }
+                .wi-flow-medium { stroke-dasharray: 6 4; animation: wi-dash 1.2s linear infinite; }
+                @keyframes wi-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+            `}</style>
+
+            <div className="px-4 pt-4 pb-6 space-y-3">
+                {/* 6 Stat Cards */}
+                <DeploymentStatsRow />
+
+                {/* Middle row: Health Matrix + AI Insights + Dependency Map */}
+                <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px_320px] gap-3">
+                    <DeploymentHealthMatrix />
+                    <AIDeploymentInsights />
+                    <DependencyImpactMap />
                 </div>
-            </header>
-            <div className="px-6 py-5 space-y-3">
-                {deployments.length === 0 && !loading ? (
-                    <div className="bg-zinc-900/50 border border-zinc-800 rounded-lg px-6 py-12 text-center text-sm text-zinc-500">
-                        {error ? "Start Discovery Service and API Gateway to see deployments." : "No deployments found."}
-                    </div>
-                ) : deployments.map((d) => {
-                    const healthy = d.ready === d.replicas;
-                    return (
-                        <div key={`${d.namespace}/${d.name}`} className={`bg-zinc-900/50 border rounded-lg p-4 ${healthy ? "border-zinc-800" : "border-amber-500/30"}`}>
-                            <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-3">
-                                    <GitBranch className="w-4 h-4 text-zinc-500" />
-                                    <div>
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-[13px] text-zinc-200 font-medium">{d.name}</span>
-                                            <span className="text-[11px] text-zinc-500 font-mono">{d.namespace}</span>
-                                        </div>
-                                        <p className="text-[11px] text-zinc-500 mt-0.5">{d.ready}/{d.replicas} ready - {d.available} available - age {d.age}</p>
-                                    </div>
-                                </div>
-                                <span className={`flex items-center gap-1 text-[11px] ${healthy ? "text-emerald-400" : "text-amber-400"}`}>
-                                    {healthy ? <CheckCircle className="w-3 h-3" /> : <AlertTriangle className="w-3 h-3" />}
-                                    {healthy ? "healthy" : "degraded"}
-                                </span>
-                            </div>
-                        </div>
-                    );
-                })}
+
+                {/* Bottom row: Rollout Timeline + Version Intelligence + Live Activity Feed */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <RolloutTimeline />
+                    <VersionIntelligence />
+                    <LiveActivityFeed />
+                </div>
             </div>
         </div>
     );

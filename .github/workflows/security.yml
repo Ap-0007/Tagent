@@ -23,6 +23,7 @@ jobs:
           - yaswanth111/tagent-monitoring:latest
           - yaswanth111/tagent-ai-engine:latest
           - yaswanth111/tagent-remediation:latest
+          - yaswanth111/tagent-notification:latest
           - yaswanth111/tagent-web:latest
     steps:
       - uses: actions/checkout@v4
@@ -44,7 +45,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        service: [api-gateway, discovery, monitoring, remediation]
+        service: [api-gateway, discovery, monitoring, remediation, notification]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5

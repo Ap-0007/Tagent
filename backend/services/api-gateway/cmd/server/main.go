@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"io"
 	"log"
 	"net/http"
@@ -9,6 +10,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/tagent-ai/tagent/backend/services/api-gateway/internal/handlers"
 	"github.com/tagent-ai/tagent/backend/services/api-gateway/internal/ws"
 )
 
@@ -52,6 +54,19 @@ func main() {
 		c.JSON(200, gin.H{"status": "ready"})
 	})
 
+	// ===== Database & User Management =====
+	databaseURL := envOr("DATABASE_URL", "")
+	if databaseURL != "" {
+		if err := handlers.InitDB(databaseURL); err != nil {
+			log.Printf("WARNING: Database init failed (user management disabled): %v", err)
+		} else {
+			log.Printf("  Database:    connected")
+		}
+	} else {
+		log.Printf("  Database:    disabled (DATABASE_URL not set)")
+	}
+	handlers.RegisterUserRoutes(router)
+
 	// WebSocket endpoint for live updates
 	wsHub = ws.NewHub()
 	router.GET("/ws", func(c *gin.Context) {
@@ -76,6 +91,21 @@ func main() {
 	router.POST("/api/v1/ai/analyze", proxyPost(aiEngineURL, "/api/v1/ai/analyze"))
 	router.POST("/api/v1/ai/rca", proxyPost(aiEngineURL, "/api/v1/ai/rca"))
 
+	// ===== Knowledge Base (served by AI Engine) =====
+	router.GET("/api/v1/knowledge/entries", proxyGetWithQuery(aiEngineURL, "/api/v1/knowledge/entries"))
+	router.GET("/api/v1/knowledge/stats", proxyGet(aiEngineURL, "/api/v1/knowledge/stats"))
+	router.POST("/api/v1/knowledge/search", proxyPost(aiEngineURL, "/api/v1/knowledge/search"))
+	router.POST("/api/v1/knowledge/ingest", proxyPost(aiEngineURL, "/api/v1/knowledge/ingest"))
+	router.POST("/api/v1/knowledge/auto-ingest", proxyPost(aiEngineURL, "/api/v1/knowledge/auto-ingest"))
+	router.POST("/api/v1/knowledge/recommend", proxyPost(aiEngineURL, "/api/v1/knowledge/recommend"))
+	router.PUT("/api/v1/knowledge/feedback", proxyPut(aiEngineURL, "/api/v1/knowledge/feedback"))
+
+	// ===== Risk Scoring (served by AI Engine) =====
+	router.GET("/api/v1/risks/scores", proxyGet(aiEngineURL, "/api/v1/risks/scores"))
+	router.GET("/api/v1/risks/summary", proxyGet(aiEngineURL, "/api/v1/risks/summary"))
+	router.GET("/api/v1/risks/predictions", proxyGet(aiEngineURL, "/api/v1/risks/predictions"))
+	router.POST("/api/v1/risks/analyze", proxyPost(aiEngineURL, "/api/v1/risks/analyze"))
+
 	// ===== Monitoring =====
 	router.GET("/api/v1/metrics/summary", proxyGet(monitoringURL, "/summary"))
 	router.GET("/api/v1/metrics/cpu", proxyGet(monitoringURL, "/metrics/cpu"))
@@ -86,6 +116,65 @@ func main() {
 	router.POST("/api/v1/notify", proxyPost(notificationURL, "/notify"))
 	router.POST("/api/v1/notify/test/slack", proxyPost(notificationURL, "/test/slack"))
 	router.POST("/api/v1/notify/test/email", proxyPost(notificationURL, "/test/email"))
+
+	// ===== Integrations (served by Notification Service) =====
+	router.GET("/api/v1/integrations", proxyGet(notificationURL, "/integrations"))
+	router.GET("/api/v1/integrations/health", proxyGet(notificationURL, "/integrations/health"))
+	router.GET("/api/v1/integrations/:id", func(c *gin.Context) {
+		resp, err := http.Get(notificationURL + "/integrations/" + c.Param("id"))
+		if err != nil {
+			c.JSON(502, gin.H{"error": "upstream unreachable"})
+			return
+		}
+		defer resp.Body.Close()
+		body, _ := io.ReadAll(resp.Body)
+		c.Data(resp.StatusCode, "application/json", body)
+	})
+	router.POST("/api/v1/integrations/:id/test", func(c *gin.Context) {
+		resp, err := http.Post(notificationURL+"/integrations/"+c.Param("id")+"/test", "application/json", nil)
+		if err != nil {
+			c.JSON(502, gin.H{"error": "upstream unreachable"})
+			return
+		}
+		defer resp.Body.Close()
+		body, _ := io.ReadAll(resp.Body)
+		c.Data(resp.StatusCode, "application/json", body)
+	})
+
+	// Integration Config (K8s Secrets management)
+	router.GET("/api/v1/integrations/config", proxyGet(notificationURL, "/integrations/config"))
+	router.GET("/api/v1/integrations/config/:id", func(c *gin.Context) {
+		resp, err := http.Get(notificationURL + "/integrations/config/" + c.Param("id"))
+		if err != nil {
+			c.JSON(502, gin.H{"error": "upstream unreachable"})
+			return
+		}
+		defer resp.Body.Close()
+		body, _ := io.ReadAll(resp.Body)
+		c.Data(resp.StatusCode, "application/json", body)
+	})
+	router.POST("/api/v1/integrations/config/:id", func(c *gin.Context) {
+		reqBody, _ := io.ReadAll(c.Request.Body)
+		resp, err := http.Post(notificationURL+"/integrations/config/"+c.Param("id"), "application/json", strings.NewReader(string(reqBody)))
+		if err != nil {
+			c.JSON(502, gin.H{"error": "upstream unreachable"})
+			return
+		}
+		defer resp.Body.Close()
+		body, _ := io.ReadAll(resp.Body)
+		c.Data(resp.StatusCode, "application/json", body)
+	})
+	router.DELETE("/api/v1/integrations/config/:id", func(c *gin.Context) {
+		req, _ := http.NewRequest(http.MethodDelete, notificationURL+"/integrations/config/"+c.Param("id"), nil)
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			c.JSON(502, gin.H{"error": "upstream unreachable"})
+			return
+		}
+		defer resp.Body.Close()
+		body, _ := io.ReadAll(resp.Body)
+		c.Data(resp.StatusCode, "application/json", body)
+	})
 
 	// ===== Remediation =====
 	router.POST("/api/v1/remediation/execute", proxyPost(remediationURL, "/execute"))
@@ -103,7 +192,45 @@ func main() {
 	router.GET("/api/v1/incidents/stored", proxyGet(remediationURL, "/incidents"))
 	router.GET("/api/v1/incidents", proxyGet(monitoringURL, "/incidents"))
 	router.GET("/api/v1/incidents/:id", func(c *gin.Context) {
-		c.JSON(200, gin.H{"id": c.Param("id"), "status": "not_found"})
+		id := c.Param("id")
+
+		// Try monitoring service first (live incidents)
+		resp, err := http.Get(monitoringURL + "/incidents")
+		if err == nil {
+			defer resp.Body.Close()
+			body, _ := io.ReadAll(resp.Body)
+			var result struct {
+				Incidents []map[string]interface{} `json:"incidents"`
+			}
+			if err := json.Unmarshal(body, &result); err == nil {
+				for _, inc := range result.Incidents {
+					if incID, ok := inc["id"].(string); ok && incID == id {
+						c.JSON(200, inc)
+						return
+					}
+				}
+			}
+		}
+
+		// Try remediation service (stored incidents in PostgreSQL)
+		resp2, err := http.Get(remediationURL + "/incidents")
+		if err == nil {
+			defer resp2.Body.Close()
+			body, _ := io.ReadAll(resp2.Body)
+			var result struct {
+				Incidents []map[string]interface{} `json:"incidents"`
+			}
+			if err := json.Unmarshal(body, &result); err == nil {
+				for _, inc := range result.Incidents {
+					if incID, ok := inc["id"].(string); ok && incID == id {
+						c.JSON(200, inc)
+						return
+					}
+				}
+			}
+		}
+
+		c.JSON(404, gin.H{"error": "incident not found", "id": id})
 	})
 
 	// ===== Reports (from PostgreSQL-backed remediation service) =====
@@ -112,26 +239,31 @@ func main() {
 		c.JSON(200, gin.H{"id": c.Param("id"), "content": ""})
 	})
 
-	// ===== Autoscaling (placeholder) =====
-	router.GET("/api/v1/autoscaling", func(c *gin.Context) {
-		c.JSON(200, gin.H{"hpas": []gin.H{}, "vpas": []gin.H{}, "events": []gin.H{}})
-	})
+	// ===== Autoscaling (from Discovery Service) =====
+	router.GET("/api/v1/autoscaling", proxyGet(discoveryURL, "/autoscaling"))
 
 	// ===== Cost (placeholder) =====
-	router.GET("/api/v1/cost/summary", func(c *gin.Context) {
-		c.JSON(200, gin.H{"monthly_spend": "$0", "potential_savings": "$0", "items": []gin.H{}, "recommendations": []gin.H{}})
-	})
+	router.GET("/api/v1/cost/summary", proxyGet(discoveryURL, "/cost/summary"))
 
-	// ===== Chaos (placeholder) =====
-	router.GET("/api/v1/chaos/experiments", func(c *gin.Context) {
-		c.JSON(200, gin.H{"experiments": []gin.H{}, "total": 0})
-	})
+	// ===== Chaos (from Remediation Service) =====
+	router.GET("/api/v1/chaos/experiments", proxyGet(remediationURL, "/chaos/experiments"))
 	router.POST("/api/v1/chaos/experiments/:id/run", func(c *gin.Context) {
-		c.JSON(200, gin.H{"id": c.Param("id"), "status": "not_implemented", "message": "Chaos testing not yet implemented", "timestamp": time.Now().UTC().Format(time.RFC3339)})
+		reqBody, _ := io.ReadAll(c.Request.Body)
+		resp, err := http.Post(remediationURL+"/chaos/experiments/"+c.Param("id")+"/run", "application/json", strings.NewReader(string(reqBody)))
+		if err != nil {
+			c.JSON(502, gin.H{"error": "upstream unreachable"})
+			return
+		}
+		defer resp.Body.Close()
+		body, _ := io.ReadAll(resp.Body)
+		c.Data(resp.StatusCode, "application/json", body)
 	})
 
 	// ===== Audit (reads from remediation history) =====
 	router.GET("/api/v1/audit", proxyGet(remediationURL, "/audit"))
+
+	// ===== Logs (from Discovery Service — reads pod logs via K8s API) =====
+	router.GET("/api/v1/logs", proxyGetWithQuery(discoveryURL, "/logs"))
 
 	log.Printf("Tagent API Gateway starting on port %s", port)
 	log.Printf("  Discovery:   %s", discoveryURL)

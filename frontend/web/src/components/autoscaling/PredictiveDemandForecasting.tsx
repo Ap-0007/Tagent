@@ -1,0 +1,184 @@
+"use client";
+
+import { useState } from "react";
+import {
+    AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
+    ResponsiveContainer, ReferenceLine, Legend,
+} from "recharts";
+
+// ─── Predictive Demand Forecasting (Recharts area chart) ─────────────────────
+
+const PERIODS = ["1H", "24H", "7D", "30D"];
+
+const DATA_24H = [
+    { time: "00:00", actual: 35, forecast: null, upper: null, lower: null },
+    { time: "02:00", actual: 38, forecast: null, upper: null, lower: null },
+    { time: "04:00", actual: 42, forecast: null, upper: null, lower: null },
+    { time: "06:00", actual: 50, forecast: null, upper: null, lower: null },
+    { time: "08:00", actual: 58, forecast: null, upper: null, lower: null },
+    { time: "10:00", actual: 68, forecast: null, upper: null, lower: null },
+    { time: "12:00", actual: 78, forecast: 78, upper: 78, lower: 78 },
+    { time: "14:00", actual: null, forecast: 86, upper: 98, lower: 74 },
+    { time: "16:00", actual: null, forecast: 92, upper: 108, lower: 76 },
+    { time: "18:00", actual: null, forecast: 98, upper: 114, lower: 80 },
+    { time: "20:00", actual: null, forecast: 104, upper: 120, lower: 84 },
+    { time: "22:00", actual: null, forecast: 108, upper: 124, lower: 86 },
+    { time: "24:00", actual: null, forecast: 112, upper: 128, lower: 88 },
+];
+
+const DATA_1H = [
+    { time: "11:00", actual: 72, forecast: null, upper: null, lower: null },
+    { time: "11:10", actual: 74, forecast: null, upper: null, lower: null },
+    { time: "11:20", actual: 75, forecast: null, upper: null, lower: null },
+    { time: "11:30", actual: 76, forecast: null, upper: null, lower: null },
+    { time: "11:40", actual: 77, forecast: null, upper: null, lower: null },
+    { time: "11:50", actual: 78, forecast: 78, upper: 78, lower: 78 },
+    { time: "12:00", actual: null, forecast: 80, upper: 84, lower: 76 },
+    { time: "12:10", actual: null, forecast: 81, upper: 86, lower: 77 },
+    { time: "12:20", actual: null, forecast: 82, upper: 87, lower: 78 },
+    { time: "12:30", actual: null, forecast: 83, upper: 88, lower: 79 },
+    { time: "12:40", actual: null, forecast: 84, upper: 89, lower: 80 },
+    { time: "12:50", actual: null, forecast: 85, upper: 90, lower: 80 },
+];
+
+const DATA_7D = [
+    { time: "Mon", actual: 45, forecast: null, upper: null, lower: null },
+    { time: "Tue", actual: 58, forecast: null, upper: null, lower: null },
+    { time: "Wed", actual: 72, forecast: null, upper: null, lower: null },
+    { time: "Thu", actual: 78, forecast: 78, upper: 78, lower: 78 },
+    { time: "Fri", actual: null, forecast: 92, upper: 112, lower: 72 },
+    { time: "Sat", actual: null, forecast: 105, upper: 130, lower: 80 },
+    { time: "Sun", actual: null, forecast: 118, upper: 148, lower: 88 },
+];
+
+const DATA_30D = [
+    { time: "W1", actual: 40, forecast: null, upper: null, lower: null },
+    { time: "W2", actual: 55, forecast: null, upper: null, lower: null },
+    { time: "W3", actual: 72, forecast: 72, upper: 72, lower: 72 },
+    { time: "W4", actual: null, forecast: 95, upper: 120, lower: 70 },
+    { time: "W5", actual: null, forecast: 115, upper: 150, lower: 80 },
+];
+
+const DATA_MAP: Record<string, typeof DATA_24H> = {
+    "1H": DATA_1H,
+    "24H": DATA_24H,
+    "7D": DATA_7D,
+    "30D": DATA_30D,
+};
+
+const STATS_MAP: Record<string, { peak: string; peakTime: string; events: string; growth: string; confidence: string }> = {
+    "1H": { peak: "85", peakTime: "12:50", events: "2", growth: "+4%", confidence: "98%" },
+    "24H": { peak: "112", peakTime: "3:00 PM", events: "9", growth: "+18%", confidence: "94%" },
+    "7D": { peak: "148", peakTime: "Sun", events: "34", growth: "+24%", confidence: "89%" },
+    "30D": { peak: "186", peakTime: "Week 5", events: "112", growth: "+31%", confidence: "85%" },
+};
+
+function CustomTooltip({ active, payload, label }: any) {
+    if (!active || !payload?.length) return null;
+    return (
+        <div className="rounded-md bg-[#0d1117]/95 border border-[#30363d] px-3 py-2 backdrop-blur-sm shadow-lg">
+            <p className="text-[11px] text-[#e6edf3] font-semibold mb-1">{label}</p>
+            {payload.map((p: any, i: number) => (
+                p.value != null && (
+                    <div key={i} className="flex items-center justify-between gap-4 text-[10px]">
+                        <span className="flex items-center gap-1.5">
+                            <span className="w-2 h-0.5 rounded-full" style={{ background: p.color }} />
+                            <span className="text-[#8b949e]">{p.name}</span>
+                        </span>
+                        <span className="text-[#e6edf3] font-mono font-bold">{p.value}</span>
+                    </div>
+                )
+            ))}
+        </div>
+    );
+}
+
+export function PredictiveDemandForecasting() {
+    const [period, setPeriod] = useState("24H");
+    const chartData = DATA_MAP[period];
+    const stats = STATS_MAP[period];
+
+    return (
+        <div className="rounded-[12px] border border-[#21262d] bg-[#161b22] p-3.5">
+            {/* Header */}
+            <div className="flex items-center justify-between mb-3">
+                <h3 className="text-[14px] font-semibold text-[#e6edf3]">Predictive Demand Forecasting</h3>
+                <div className="flex items-center gap-0.5 p-0.5 rounded-md bg-[#0d1117] border border-[#30363d]">
+                    {PERIODS.map(p => (
+                        <button
+                            key={p}
+                            onClick={() => setPeriod(p)}
+                            className={`px-2.5 h-6 rounded text-[10px] font-medium transition-colors ${period === p ? "bg-[#1f6feb]/20 text-[#58a6ff]" : "text-[#8b949e] hover:text-[#e6edf3]"}`}
+                        >
+                            {p}
+                        </button>
+                    ))}
+                </div>
+            </div>
+
+            {/* Chart */}
+            <div className="h-[220px] -mx-2">
+                <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
+                        <defs>
+                            <linearGradient id="actualGrad" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="0%" stopColor="#58a6ff" stopOpacity={0.3} />
+                                <stop offset="100%" stopColor="#58a6ff" stopOpacity={0} />
+                            </linearGradient>
+                            <linearGradient id="forecastGrad" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="0%" stopColor="#3fb950" stopOpacity={0.2} />
+                                <stop offset="100%" stopColor="#3fb950" stopOpacity={0} />
+                            </linearGradient>
+                            <linearGradient id="bandGrad" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="0%" stopColor="#a371f7" stopOpacity={0.15} />
+                                <stop offset="100%" stopColor="#a371f7" stopOpacity={0} />
+                            </linearGradient>
+                        </defs>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#21262d" strokeOpacity={0.6} />
+                        <XAxis dataKey="time" tick={{ fill: "#6e7681", fontSize: 10 }} axisLine={{ stroke: "#21262d" }} tickLine={false} />
+                        <YAxis tick={{ fill: "#6e7681", fontSize: 10 }} axisLine={{ stroke: "#21262d" }} tickLine={false} domain={[0, "auto"]} label={{ value: "Replicas", angle: -90, position: "insideLeft", fill: "#8b949e", fontSize: 10 }} />
+                        <Tooltip content={<CustomTooltip />} />
+                        <Legend
+                            verticalAlign="top"
+                            height={28}
+                            iconType="line"
+                            wrapperStyle={{ fontSize: "10px", color: "#8b949e" }}
+                        />
+                        {/* Upper bound area */}
+                        <Area type="monotone" dataKey="upper" name="Upper Bound" stroke="#a371f7" strokeWidth={1.5} strokeDasharray="4 3" fill="url(#bandGrad)" connectNulls={false} dot={false} />
+                        {/* Lower bound */}
+                        <Area type="monotone" dataKey="lower" name="Lower Bound" stroke="#ec4899" strokeWidth={1.5} strokeDasharray="4 3" fill="none" connectNulls={false} dot={false} />
+                        {/* Forecast */}
+                        <Area type="monotone" dataKey="forecast" name="Forecast" stroke="#3fb950" strokeWidth={2.5} strokeDasharray="6 4" fill="url(#forecastGrad)" connectNulls={false} dot={false} activeDot={{ r: 5, fill: "#3fb950", stroke: "#0d1117", strokeWidth: 2 }} />
+                        {/* Actual */}
+                        <Area type="monotone" dataKey="actual" name="Actual" stroke="#58a6ff" strokeWidth={2.5} fill="url(#actualGrad)" connectNulls={false} dot={false} activeDot={{ r: 5, fill: "#58a6ff", stroke: "#0d1117", strokeWidth: 2 }} />
+                    </AreaChart>
+                </ResponsiveContainer>
+            </div>
+
+            {/* Bottom stats */}
+            <div className="grid grid-cols-4 gap-3 pt-3 border-t border-[#21262d]">
+                <div>
+                    <p className="text-[9.5px] text-[#8b949e]">Peak Replicas (Predicted)</p>
+                    <p className="text-[22px] font-bold text-[#e6edf3] font-mono leading-none mt-1">{stats.peak}</p>
+                    <p className="text-[9px] text-[#6e7681] mt-0.5">{stats.peakTime}</p>
+                </div>
+                <div>
+                    <p className="text-[9.5px] text-[#8b949e]">Scale Events (Predicted)</p>
+                    <p className="text-[22px] font-bold text-[#e6edf3] font-mono leading-none mt-1">{stats.events}</p>
+                    <p className="text-[9px] text-[#6e7681] mt-0.5">Next period</p>
+                </div>
+                <div>
+                    <p className="text-[9.5px] text-[#8b949e]">Growth Trend</p>
+                    <p className="text-[22px] font-bold text-[#3fb950] font-mono leading-none mt-1">{stats.growth}</p>
+                    <p className="text-[9px] text-[#6e7681] mt-0.5">vs previous</p>
+                </div>
+                <div>
+                    <p className="text-[9.5px] text-[#8b949e]">Confidence</p>
+                    <p className="text-[22px] font-bold text-[#3fb950] font-mono leading-none mt-1">{stats.confidence}</p>
+                    <p className="text-[9px] text-[#f0883e] font-semibold mt-0.5">High</p>
+                </div>
+            </div>
+        </div>
+    );
+}

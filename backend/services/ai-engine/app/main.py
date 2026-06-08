@@ -9,6 +9,8 @@ import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.routers import chat, analysis, rca
+from app.routers import knowledge as knowledge_router
+from app.routers import risks as risks_router
 
 app = FastAPI(
     title="Tagent AI Engine",
@@ -42,6 +44,8 @@ async def health():
 app.include_router(chat.router, prefix="/api/v1/ai", tags=["chat"])
 app.include_router(analysis.router, prefix="/api/v1/ai", tags=["analysis"])
 app.include_router(rca.router, prefix="/api/v1/ai", tags=["rca"])
+app.include_router(knowledge_router.router, prefix="/api/v1/knowledge", tags=["knowledge"])
+app.include_router(risks_router.router, prefix="/api/v1/risks", tags=["risks"])
 
 
 if __name__ == "__main__":
