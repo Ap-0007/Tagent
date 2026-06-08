@@ -12,20 +12,15 @@ The manager runs all enabled detector plugins every 15 seconds
 import importlib
 import importlib.util
 import os
-import sys
 import time
 import traceback
 from pathlib import Path
-from typing import Optional
 
 from app.plugins.sdk import (
     DetectorPlugin,
     AnalyzerPlugin,
     ActionPlugin,
     PluginInfo,
-    Detection,
-    AnalysisResult,
-    ActionResult,
 )
 
 # Directories for plugin discovery

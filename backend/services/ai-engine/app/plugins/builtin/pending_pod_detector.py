@@ -22,7 +22,7 @@ class PendingPodDetector(DetectorPlugin):
                     service=pod.get("name", "unknown"),
                     namespace=pod.get("namespace", "default"),
                     evidence=[
-                        f"Status: Pending",
+                        "Status: Pending",
                         f"Node: {pod.get('node', 'unscheduled')}",
                         f"CPU request: {pod.get('cpu_request', 'unknown')}",
                         f"Memory request: {pod.get('memory_request', 'unknown')}",

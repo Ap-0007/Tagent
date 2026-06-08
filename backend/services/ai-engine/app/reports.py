@@ -275,7 +275,7 @@ def _build_markdown_report(incident: dict, actions: list, ai_summary: str, durat
 
     # Timeline
     lines.append("## Timeline\n")
-    lines.append(f"- **Detected:** Incident identified by Tagent monitoring")
+    lines.append("- **Detected:** Incident identified by Tagent monitoring")
     if actions:
         for a in actions[:5]:
             status_icon = "✓" if a.get("status") == "success" else "✗" if a.get("status") == "failed" else "○"

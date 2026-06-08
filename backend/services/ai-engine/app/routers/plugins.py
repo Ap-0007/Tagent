@@ -15,7 +15,6 @@ Endpoints:
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from app.plugins.manager import plugin_manager
-from app.context import fetch_cluster_context
 import os
 import httpx
 

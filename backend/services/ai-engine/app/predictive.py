@@ -18,11 +18,7 @@ All processing runs locally — no cloud ML services.
 """
 
 import os
-import json
 import time
-import math
-from datetime import datetime, timedelta
-from typing import Optional
 import httpx
 
 DISCOVERY_URL = os.getenv("DISCOVERY_URL", "http://localhost:8081")
@@ -217,7 +213,7 @@ def detect_cluster_degradation() -> list[Prediction]:
                 time_to_failure="now",
                 evidence=[
                     f"Ready nodes: {ready_nodes[-1]}/{total_nodes[-1]}",
-                    f"Pods may be evicted from NotReady nodes",
+                    "Pods may be evicted from NotReady nodes",
                 ],
                 action="Check node conditions. Investigate disk/memory pressure. Consider draining affected nodes.",
                 trend_direction="critical",

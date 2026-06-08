@@ -13,7 +13,7 @@ Endpoints:
 - GET  /briefing/history      → past briefings
 """
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 from pydantic import BaseModel
 from app.providers import OllamaProvider
 from app.context import fetch_cluster_context
@@ -21,7 +21,7 @@ import os
 import json
 import time
 import httpx
-from datetime import datetime, timedelta
+from datetime import datetime
 
 router = APIRouter()
 provider = OllamaProvider()
@@ -289,7 +289,7 @@ def _build_fallback_summary(stats: dict) -> str:
     if stats["total_incidents"] == 0:
         return "Good morning. All clear overnight — no incidents detected. Your cluster is healthy and all services are running normally."
 
-    parts = [f"Good morning. Here's your overnight summary:"]
+    parts = ["Good morning. Here's your overnight summary:"]
     if stats["critical_incidents"] > 0:
         parts.append(f"{stats['critical_incidents']} critical incident(s) detected overnight.")
     if stats["high_incidents"] > 0:

@@ -55,7 +55,6 @@ async def health():
 
 # Background task: collect telemetry snapshots every 15 seconds for predictive detection
 import asyncio
-from contextlib import asynccontextmanager
 
 _collector_task = None
 
@@ -67,7 +66,7 @@ async def start_predictive_collector():
         while True:
             try:
                 await predictive.collect_snapshot()
-            except Exception as e:
+            except Exception:
                 pass  # silently continue on errors
             await asyncio.sleep(15)
     _collector_task = asyncio.create_task(collector_loop())

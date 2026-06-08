@@ -18,7 +18,6 @@ Endpoints:
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from app.providers import OllamaProvider
-from app import knowledge
 import os
 import httpx
 import json
