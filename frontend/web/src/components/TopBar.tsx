@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { Search, Bell, Radio, ChevronDown, Clock } from "lucide-react";
+import { getAdminInfo } from "@/lib/api";
 
 const pageTitles: Record<string, { title: string; description: string; aiBadge?: boolean }> = {
     "/": { title: "Dashboard", description: "AI-powered Kubernetes incident intelligence, operational insights, and autonomous remediation." },
@@ -35,6 +36,45 @@ export function TopBar() {
     const page = pageTitles[pathname] || pageTitles["/"];
     const [notifOpen, setNotifOpen] = useState(false);
     const [adminInitial, setAdminInitial] = useState("A");
+    const [clusterName, setClusterName] = useState("—");
+    const [environment, setEnvironment] = useState("—");
+    const [notifications, setNotifications] = useState<Array<{ title: string; sub: string; time: string; color: string; unread: boolean }>>([]);
+    const [timeRange, setTimeRange] = useState("Last 15m");
+    const [timeOpen, setTimeOpen] = useState(false);
+
+    // Fetch admin info for cluster/environment display
+    useEffect(() => {
+        getAdminInfo()
+            .then(info => {
+                setClusterName(info.cluster_name || "—");
+                setEnvironment(info.role || "—");
+                if (info.name) setAdminInitial(info.name.charAt(0).toUpperCase());
+            })
+            .catch(() => { });
+
+        // Fetch notifications from real events/incidents
+        Promise.all([
+            import("@/lib/api").then(m => m.getRecentEvents()).catch(() => ({ events: [], total: 0 })),
+            import("@/lib/api").then(m => m.getIncidents()).catch(() => ({ incidents: [], total: 0 })),
+        ]).then(([eventsData, incidentsData]) => {
+            const notifs: Array<{ title: string; sub: string; time: string; color: string; unread: boolean }> = [];
+            for (const inc of (incidentsData.incidents || []).slice(0, 5)) {
+                const color = inc.severity === "critical" ? "#f85149" : inc.severity === "high" ? "#f0883e" : "#a371f7";
+                const diff = Date.now() - new Date(inc.startedAt).getTime();
+                const mins = Math.floor(diff / 60000);
+                const ago = mins < 60 ? `${mins}m ago` : `${Math.floor(mins / 60)}h ago`;
+                notifs.push({ title: `${inc.severity.charAt(0).toUpperCase() + inc.severity.slice(1)}: ${inc.title}`, sub: inc.rootCause || inc.service, time: ago, color, unread: inc.status === "active" });
+            }
+            for (const ev of (eventsData.events || []).slice(0, 7)) {
+                const color = ev.severity === "critical" ? "#f85149" : ev.severity === "warning" ? "#f0883e" : ev.severity === "success" ? "#3fb950" : "#58a6ff";
+                const diff = Date.now() - new Date(ev.timestamp).getTime();
+                const mins = Math.floor(diff / 60000);
+                const ago = mins < 60 ? `${mins}m ago` : `${Math.floor(mins / 60)}h ago`;
+                notifs.push({ title: ev.title || ev.type, sub: ev.detail || ev.source, time: ago, color, unread: false });
+            }
+            setNotifications(notifs);
+        }).catch(() => { });
+    }, []);
 
     // Read admin name for avatar
     if (typeof window !== "undefined") {
@@ -83,21 +123,40 @@ export function TopBar() {
                 {/* Environment */}
                 <div className="hidden md:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-navy-800/50 border border-[rgba(59,130,246,0.08)] text-xs cursor-pointer hover:border-[rgba(59,130,246,0.2)] transition-colors">
                     <span className="text-slate-500 text-2xs">Environment</span>
-                    <span className="text-slate-200 font-medium text-2xs">Production</span>
+                    <span className="text-slate-200 font-medium text-2xs">{environment}</span>
                     <ChevronDown className="w-3 h-3 text-slate-500" />
                 </div>
 
                 {/* Cluster */}
                 <div className="hidden md:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-navy-800/50 border border-[rgba(59,130,246,0.08)] text-xs cursor-pointer hover:border-[rgba(59,130,246,0.2)] transition-colors">
                     <span className="text-slate-500 text-2xs">Cluster</span>
-                    <span className="text-slate-200 font-medium font-mono text-2xs">prod-cluster-01</span>
+                    <span className="text-slate-200 font-medium font-mono text-2xs">{clusterName}</span>
                     <ChevronDown className="w-3 h-3 text-slate-500" />
                 </div>
 
-                {/* Time range */}
-                <div className="hidden lg:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-navy-800/50 border border-[rgba(59,130,246,0.08)] text-2xs text-slate-400 cursor-pointer hover:border-[rgba(59,130,246,0.2)] transition-colors">
-                    <Clock className="w-3 h-3" />
-                    <span>Last 15m</span>
+                {/* Time range dropdown */}
+                <div className="hidden lg:block relative">
+                    <button
+                        onClick={() => setTimeOpen(o => !o)}
+                        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-navy-800/50 border border-[rgba(59,130,246,0.08)] text-2xs text-slate-400 cursor-pointer hover:border-[rgba(59,130,246,0.2)] transition-colors"
+                    >
+                        <Clock className="w-3 h-3" />
+                        <span>{timeRange}</span>
+                        <ChevronDown className="w-3 h-3 text-slate-500" />
+                    </button>
+                    {timeOpen && (
+                        <div className="absolute top-full mt-1 right-0 z-50 w-36 rounded-lg bg-[#161b22] border border-[#30363d] shadow-[0_8px_24px_rgba(0,0,0,0.6)] py-1">
+                            {["Last 5m", "Last 15m", "Last 30m", "Last 1h", "Last 6h", "Last 24h", "Last 7d"].map(t => (
+                                <button
+                                    key={t}
+                                    onClick={() => { setTimeRange(t); setTimeOpen(false); }}
+                                    className={`w-full text-left px-3 py-1.5 text-[11px] hover:bg-[#21262d] transition-colors ${timeRange === t ? "text-[#58a6ff]" : "text-[#e6edf3]"}`}
+                                >
+                                    {t}
+                                </button>
+                            ))}
+                        </div>
+                    )}
                 </div>
 
                 {/* Live indicator */}
@@ -125,7 +184,7 @@ export function TopBar() {
                                 <div className="flex items-center justify-between px-4 py-3 border-b border-[rgba(59,130,246,0.08)]">
                                     <h3 className="text-[13px] font-semibold text-slate-100">Notifications</h3>
                                     <div className="flex items-center gap-2">
-                                        <span className="text-[10px] text-slate-500">12 unread</span>
+                                        <span className="text-[10px] text-slate-500">{notifications.filter(n => n.unread).length} unread</span>
                                         <button onClick={() => setNotifOpen(false)} className="text-slate-500 hover:text-slate-200">
                                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
                                         </button>
@@ -133,20 +192,12 @@ export function TopBar() {
                                 </div>
                                 {/* Notifications list */}
                                 <div className="max-h-[400px] overflow-y-auto">
-                                    {[
-                                        { title: "Critical: Payment Service Error Rate", sub: "Error rate exceeded 5% threshold", time: "2m ago", color: "#f85149", unread: true },
-                                        { title: "High: Database Connection Saturation", sub: "Connection pool at 92% capacity", time: "5m ago", color: "#f0883e", unread: true },
-                                        { title: "Remediation Executed", sub: "Scaled connection pool 50 → 120", time: "7m ago", color: "#3fb950", unread: true },
-                                        { title: "AI Analysis Complete", sub: "Root cause identified: pool exhaustion", time: "8m ago", color: "#a371f7", unread: true },
-                                        { title: "Warning: Memory Pressure", sub: "user-service at 85% memory usage", time: "12m ago", color: "#f0883e", unread: true },
-                                        { title: "Deployment Completed", sub: "api-gateway v3.1.0 rolled out successfully", time: "18m ago", color: "#3fb950", unread: false },
-                                        { title: "Scaling Event", sub: "AI Engine scaled from 3 to 6 replicas", time: "22m ago", color: "#58a6ff", unread: false },
-                                        { title: "Night Guardian Report", sub: "All systems healthy, 0 issues detected", time: "30m ago", color: "#3fb950", unread: false },
-                                        { title: "Cost Alert", sub: "Daily spend 12% above forecast", time: "45m ago", color: "#f0883e", unread: false },
-                                        { title: "Certificate Renewal", sub: "SSL cert renewed for api.tagent.io", time: "1h ago", color: "#58a6ff", unread: false },
-                                        { title: "Incident Resolved", sub: "INC-48289 auto-resolved by AI", time: "2h ago", color: "#3fb950", unread: false },
-                                        { title: "New Integration", sub: "Slack integration connected", time: "3h ago", color: "#58a6ff", unread: false },
-                                    ].map((n, i) => (
+                                    {notifications.length === 0 && (
+                                        <div className="px-4 py-6 text-center">
+                                            <p className="text-[11px] text-slate-500">No notifications</p>
+                                        </div>
+                                    )}
+                                    {notifications.map((n, i) => (
                                         <div key={i} className={`flex items-start gap-3 px-4 py-2.5 border-b border-[rgba(59,130,246,0.05)] hover:bg-white/[0.02] transition-colors cursor-pointer ${n.unread ? "bg-blue-500/[0.03]" : ""}`}>
                                             <span className="w-2 h-2 rounded-full mt-1.5 shrink-0" style={{ background: n.color, boxShadow: `0 0 4px ${n.color}` }} />
                                             <div className="flex-1 min-w-0">

@@ -1,5 +1,8 @@
 "use client";
 
+import { useEffect, useState } from "react";
+import { getServices, getDeployments, type ServiceInfo, type DeploymentInfo } from "@/lib/api";
+
 // ─── Dependency Impact Map (pill-shaped glass cards + neon connections) ──────
 
 interface DepNode {
@@ -11,14 +14,6 @@ interface DepNode {
     left: string;
 }
 
-const DEP_NODES: DepNode[] = [
-    { id: "api-gw", label: "API Gateway", version: "v3.1.0", status: "healthy", top: "10%", left: "20%" },
-    { id: "ai-engine", label: "AI Engine", version: "v2.4.1", status: "healthy", top: "32%", left: "12%" },
-    { id: "monitoring", label: "Monitoring", version: "v1.9.3", status: "healthy", top: "58%", left: "8%" },
-    { id: "notification", label: "Notification", version: "v2.0.4", status: "warning", top: "58%", left: "48%" },
-    { id: "postgresql", label: "PostgreSQL", version: "15.4", status: "healthy", top: "82%", left: "22%" },
-];
-
 const STATUS_COLORS: Record<string, { border: string; bg: string; icon: string }> = {
     healthy: { border: "#3fb950", bg: "rgba(63,185,80,0.08)", icon: "#3fb950" },
     warning: { border: "#f0883e", bg: "rgba(240,136,62,0.08)", icon: "#f0883e" },
@@ -26,7 +21,44 @@ const STATUS_COLORS: Record<string, { border: string; bg: string; icon: string }
     unknown: { border: "#6e7681", bg: "rgba(110,118,129,0.08)", icon: "#6e7681" },
 };
 
+function buildDepNodes(deployments: DeploymentInfo[], services: ServiceInfo[]): DepNode[] {
+    const items = deployments.length > 0 ? deployments : services.map(s => ({ name: s.name, namespace: s.namespace, replicas: 1, ready: 1, available: 1, age: "" }));
+    if (items.length === 0) return [];
+
+    const positions = [
+        { top: "10%", left: "20%" }, { top: "32%", left: "12%" }, { top: "58%", left: "8%" },
+        { top: "58%", left: "48%" }, { top: "82%", left: "22%" }, { top: "10%", left: "55%" },
+        { top: "32%", left: "60%" }, { top: "82%", left: "55%" },
+    ];
+
+    return items.slice(0, 8).map((d, i) => ({
+        id: d.name,
+        label: d.name,
+        version: d.age || "—",
+        status: d.ready === d.replicas ? "healthy" : d.ready === 0 ? "critical" : "warning",
+        top: positions[i % positions.length].top,
+        left: positions[i % positions.length].left,
+    }));
+}
+
 export function DependencyImpactMap() {
+    const [nodes, setNodes] = useState<DepNode[]>([]);
+
+    useEffect(() => {
+        async function load() {
+            try {
+                const [deployments, services] = await Promise.all([
+                    getDeployments().catch(() => []),
+                    getServices().catch(() => []),
+                ]);
+                const built = buildDepNodes(deployments || [], services || []);
+                setNodes(built);
+            } catch { }
+        }
+        load();
+        const interval = setInterval(load, 15000);
+        return () => clearInterval(interval);
+    }, []);
     return (
         <div className="rounded-[12px] border border-[#21262d] bg-[#161b22] flex flex-col overflow-hidden">
             {/* Header */}
@@ -82,7 +114,7 @@ export function DependencyImpactMap() {
                 </svg>
 
                 {/* Node cards (positioned absolutely) */}
-                {DEP_NODES.map(node => (
+                {nodes.map(node => (
                     <div
                         key={node.id}
                         className="absolute z-10"

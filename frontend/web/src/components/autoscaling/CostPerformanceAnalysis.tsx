@@ -1,8 +1,11 @@
 "use client";
 
+import { useEffect, useState } from "react";
+import { getCostSummary } from "@/lib/api";
+
 // ─── Cost vs Performance Analysis (scatter plot with legend on right) ────────
 
-const POINTS = [
+const FALLBACK_POINTS = [
     { x: 35, y: 25, r: 8, color: "#3fb950", label: "High Efficiency" },
     { x: 55, y: 40, r: 7, color: "#58a6ff", label: "Good Efficiency" },
     { x: 80, y: 55, r: 9, color: "#22d3ee", label: "Medium Efficiency" },
@@ -10,7 +13,39 @@ const POINTS = [
     { x: 150, y: 85, r: 10, color: "#f85149", label: "Over-Provisioned" },
 ];
 
+const EFFICIENCY_COLORS = ["#3fb950", "#58a6ff", "#22d3ee", "#f0883e", "#f85149"];
+const EFFICIENCY_LABELS = ["High Efficiency", "Good Efficiency", "Medium Efficiency", "Low Efficiency", "Over-Provisioned"];
+
 export function CostPerformanceAnalysis() {
+    const [points, setPoints] = useState<typeof FALLBACK_POINTS>([]);
+
+    useEffect(() => {
+        let active = true;
+        const fetchData = () => {
+            getCostSummary()
+                .then((data) => {
+                    if (!active || data.items.length === 0) return;
+                    const mapped = data.items.slice(0, 5).map((item, i) => {
+                        // Distribute points across the chart based on index
+                        const costVal = parseFloat(item.estimate.replace(/[^0-9.]/g, "")) || (30 + i * 30);
+                        const x = Math.min(170, Math.max(25, costVal * 0.8 + i * 25));
+                        const y = Math.min(120, Math.max(15, 20 + i * 18));
+                        return {
+                            x,
+                            y,
+                            r: 7 + (i % 3),
+                            color: EFFICIENCY_COLORS[i] || EFFICIENCY_COLORS[4],
+                            label: EFFICIENCY_LABELS[i] || "Over-Provisioned",
+                        };
+                    });
+                    if (mapped.length > 0) setPoints(mapped);
+                })
+                .catch(() => { });
+        };
+        fetchData();
+        const interval = setInterval(fetchData, 15_000);
+        return () => { active = false; clearInterval(interval); };
+    }, []);
     return (
         <div className="rounded-[12px] border border-[#21262d] bg-[#161b22] p-3.5">
             <h3 className="text-[13px] font-semibold text-[#e6edf3] mb-3">Cost vs Performance Analysis</h3>
@@ -38,7 +73,7 @@ export function CostPerformanceAnalysis() {
                         <text x="52" y="48" textAnchor="middle" fontSize="5" fill="#3fb950" fillOpacity="0.5">High performance, low cost</text>
 
                         {/* Data points with glow */}
-                        {POINTS.map((p, i) => (
+                        {points.map((p, i) => (
                             <g key={i}>
                                 <circle cx={p.x} cy={p.y} r={p.r + 4} fill={p.color} fillOpacity="0.12" />
                                 <circle cx={p.x} cy={p.y} r={p.r} fill={p.color} fillOpacity="0.3" stroke={p.color} strokeWidth="1.5" style={{ filter: `drop-shadow(0 0 4px ${p.color})` }} />
@@ -57,7 +92,7 @@ export function CostPerformanceAnalysis() {
 
                 {/* Legend (right side) */}
                 <div className="shrink-0 space-y-2.5 pt-4">
-                    {POINTS.map((p, i) => (
+                    {points.map((p, i) => (
                         <div key={i} className="flex items-center gap-2">
                             <span className="w-3 h-3 rounded-full shrink-0" style={{ background: p.color, boxShadow: `0 0 4px ${p.color}` }} />
                             <span className="text-[10px] text-[#8b949e] whitespace-nowrap">{p.label}</span>

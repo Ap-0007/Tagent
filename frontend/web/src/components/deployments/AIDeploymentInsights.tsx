@@ -1,14 +1,88 @@
 "use client";
 
-const INSIGHTS = [
-    { text: "Deployment fleet is healthy", sub: "No critical issues detected across all namespaces", confidence: 99, color: "#3fb950" },
-    { text: "Ollama deployment unavailable", sub: "Replica set is 0/2 for 2h 40m", confidence: 91, color: "#f85149" },
-    { text: "Elevated rollout risk detected in staging", sub: "Image pull latency and readiness time increased", confidence: 94, color: "#f0883e" },
-    { text: "No restart anomalies observed", sub: "All deployments stable", confidence: 96, color: "#3fb950" },
-    { text: "PostgreSQL operating normally", sub: "Performance within baseline", confidence: 98, color: "#3fb950" },
-];
+import { useEffect, useState } from "react";
+import { getRiskScores, getPredictivePredictions, type ServiceRisk, type PredictiveResult } from "@/lib/api";
+
+interface Insight {
+    text: string;
+    sub: string;
+    confidence: number;
+    color: string;
+}
+
+interface RiskDetail {
+    deployment: string;
+    issue: string;
+    cause: string;
+    action: string;
+    confidence: number;
+    severity: string;
+}
 
 export function AIDeploymentInsights() {
+    const [insights, setInsights] = useState<Insight[]>([]);
+    const [topRisk, setTopRisk] = useState<RiskDetail | null>(null);
+
+    useEffect(() => {
+        async function load() {
+            try {
+                const [riskData, predictions] = await Promise.all([
+                    getRiskScores().catch(() => ({ services: [], total: 0, calculated_at: "" })),
+                    getPredictivePredictions().catch(() => ({ predictions: [], total: 0, model_stats: null })),
+                ]);
+                const services = riskData.services || [];
+                const preds = (predictions.predictions || []) as PredictiveResult[];
+
+                // Derive insights
+                const derived: Insight[] = [];
+                const healthy = services.filter(s => s.risk_level === "low");
+                const critical = services.filter(s => s.risk_level === "critical" || s.risk_level === "high");
+
+                if (healthy.length > 0 && critical.length === 0) {
+                    derived.push({ text: "Deployment fleet is healthy", sub: "No critical issues detected across all namespaces", confidence: 99, color: "#3fb950" });
+                }
+                for (const s of critical.slice(0, 2)) {
+                    derived.push({
+                        text: `${s.service} at risk`,
+                        sub: s.prediction || s.recommended_action,
+                        confidence: Math.round(100 - s.risk_score),
+                        color: s.risk_level === "critical" ? "#f85149" : "#f0883e",
+                    });
+                }
+                for (const p of preds.slice(0, 2)) {
+                    derived.push({
+                        text: p.preventive_action,
+                        sub: `${p.resource}: ${p.predicted_issue}`,
+                        confidence: Math.round(p.confidence * 100),
+                        color: p.probability > 0.7 ? "#f85149" : p.probability > 0.4 ? "#f0883e" : "#3fb950",
+                    });
+                }
+                if (derived.length === 0) {
+                    derived.push({ text: "All deployments stable", sub: "No issues detected", confidence: 98, color: "#3fb950" });
+                }
+                setInsights(derived.slice(0, 5));
+
+                // Top risk for Risk Analysis section
+                if (critical.length > 0) {
+                    const top = critical[0];
+                    setTopRisk({
+                        deployment: top.service,
+                        issue: top.prediction || "Elevated risk",
+                        cause: top.factors?.[0]?.detail || "Unknown",
+                        action: top.recommended_action,
+                        confidence: Math.round(100 - top.risk_score),
+                        severity: top.risk_level,
+                    });
+                } else {
+                    setTopRisk(null);
+                }
+            } catch { }
+        }
+        load();
+        const interval = setInterval(load, 15000);
+        return () => clearInterval(interval);
+    }, []);
+
     return (
         <div className="rounded-[12px] border border-[#21262d] bg-[#161b22] p-3.5 flex flex-col">
             <div className="flex items-center justify-between mb-3">
@@ -22,7 +96,8 @@ export function AIDeploymentInsights() {
                 <button className="text-[10px] text-[#58a6ff] hover:text-[#79c0ff]">View all</button>
             </div>
             <div className="space-y-2 flex-1">
-                {INSIGHTS.map((ins, i) => (
+                {insights.length === 0 && <p className="text-[10px] text-[#8b949e] text-center py-3">No data available</p>}
+                {insights.map((ins, i) => (
                     <div key={i} className="flex items-start gap-2 p-2 rounded-md bg-[#0d1117] border border-[#21262d]">
                         <span className="w-1.5 h-1.5 rounded-full mt-1.5 shrink-0" style={{ background: ins.color, boxShadow: `0 0 4px ${ins.color}` }} />
                         <div className="flex-1 min-w-0">
@@ -35,38 +110,40 @@ export function AIDeploymentInsights() {
             </div>
 
             {/* Risk Analysis section */}
-            <div className="mt-3 pt-3 border-t border-[#21262d]">
-                <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-2">
-                        <h4 className="text-[12px] font-semibold text-[#e6edf3]">Risk Analysis</h4>
-                        <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase" style={{ background: "rgba(248,81,73,0.15)", color: "#f85149" }}>Critical</span>
-                    </div>
-                    <button className="text-[10px] text-[#58a6ff]">View full analysis</button>
-                </div>
-                <div className="rounded-md bg-[#0d1117] border border-[#21262d] p-2.5">
-                    <div className="flex items-start justify-between gap-3">
-                        <div>
-                            <p className="text-[10px] text-[#8b949e]">Deployment</p>
-                            <p className="text-[12px] font-semibold text-[#e6edf3]">tagent-ollama</p>
-                            <p className="text-[10px] text-[#8b949e] mt-1">Issue</p>
-                            <p className="text-[11px] text-[#f85149] font-medium">Replica unavailable</p>
-                            <p className="text-[10px] text-[#8b949e] mt-1">Likely Cause</p>
-                            <p className="text-[11px] text-[#e6edf3]">Image pull delay</p>
+            {topRisk && (
+                <div className="mt-3 pt-3 border-t border-[#21262d]">
+                    <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                            <h4 className="text-[12px] font-semibold text-[#e6edf3]">Risk Analysis</h4>
+                            <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase" style={{ background: topRisk.severity === "critical" ? "rgba(248,81,73,0.15)" : "rgba(240,136,62,0.15)", color: topRisk.severity === "critical" ? "#f85149" : "#f0883e" }}>{topRisk.severity}</span>
                         </div>
-                        <div className="text-right shrink-0">
-                            <p className="text-[9px] text-[#8b949e]">Confidence</p>
-                            <p className="text-[18px] font-bold text-[#3fb950] font-mono">91%</p>
+                        <button className="text-[10px] text-[#58a6ff]">View full analysis</button>
+                    </div>
+                    <div className="rounded-md bg-[#0d1117] border border-[#21262d] p-2.5">
+                        <div className="flex items-start justify-between gap-3">
+                            <div>
+                                <p className="text-[10px] text-[#8b949e]">Deployment</p>
+                                <p className="text-[12px] font-semibold text-[#e6edf3]">{topRisk.deployment}</p>
+                                <p className="text-[10px] text-[#8b949e] mt-1">Issue</p>
+                                <p className="text-[11px] text-[#f85149] font-medium">{topRisk.issue}</p>
+                                <p className="text-[10px] text-[#8b949e] mt-1">Likely Cause</p>
+                                <p className="text-[11px] text-[#e6edf3]">{topRisk.cause}</p>
+                            </div>
+                            <div className="text-right shrink-0">
+                                <p className="text-[9px] text-[#8b949e]">Confidence</p>
+                                <p className="text-[18px] font-bold text-[#3fb950] font-mono">{topRisk.confidence}%</p>
+                            </div>
                         </div>
+                        <div className="mt-2">
+                            <p className="text-[10px] text-[#8b949e]">Suggested Action</p>
+                            <p className="text-[10.5px] text-[#e6edf3]">{topRisk.action}</p>
+                        </div>
+                        <button className="mt-2 w-full py-1.5 rounded-md text-[11px] font-semibold text-white" style={{ background: "linear-gradient(135deg, #1f6feb, #7c3aed)", boxShadow: "0 0 8px rgba(124,58,237,0.3)" }}>
+                            View Remediation Steps
+                        </button>
                     </div>
-                    <div className="mt-2">
-                        <p className="text-[10px] text-[#8b949e]">Suggested Action</p>
-                        <p className="text-[10.5px] text-[#e6edf3]">Verify image registry availability and network access.</p>
-                    </div>
-                    <button className="mt-2 w-full py-1.5 rounded-md text-[11px] font-semibold text-white" style={{ background: "linear-gradient(135deg, #1f6feb, #7c3aed)", boxShadow: "0 0 8px rgba(124,58,237,0.3)" }}>
-                        View Remediation Steps
-                    </button>
                 </div>
-            </div>
+            )}
         </div>
     );
 }

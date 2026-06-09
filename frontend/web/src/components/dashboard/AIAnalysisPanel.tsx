@@ -1,67 +1,74 @@
 "use client";
 
-import { type Incident } from "@/lib/api";
+import { useEffect, useState } from "react";
+import { getIncidents, type Incident } from "@/lib/api";
 import { AlertTriangle, Clock, Target, Zap, Brain, TrendingUp } from "lucide-react";
 
-// Hardcoded demo data - will be replaced with backend data when connected
-const DEMO_INCIDENT = {
-    id: "INC-48291",
-    title: "High Error Rate in Payment Service",
-    severity: "critical" as const,
-    status: "active" as const,
-    service: "payment-service",
-    namespace: "production",
-    startedAt: new Date(Date.now() - 7 * 60 * 1000).toISOString(),
-    rootCause: "Connection pool exhaustion in PostgreSQL caused by slow queries after recent deployment.",
-    confidence: 96,
-};
-
-const DEMO_TIMELINE = [
-    { time: "7m ago", event: "Error rate spike detected", status: "critical" as const },
-    { time: "6m ago", event: "Latency increase — Confidence Query", status: "warning" as const },
-    { time: "5m ago", event: "Connection pool saturation", status: "warning" as const },
-    { time: "4m ago", event: "Automatic mitigation triggered", status: "info" as const },
-];
-
-const DEMO_BLAST_RADIUS = [
-    { label: "Services Impacted", value: "1" },
-    { label: "Pods Affected", value: "12" },
-    { label: "Requests/Min Affected", value: "248" },
-];
-
 interface AIAnalysisPanelProps {
-    incidents: Incident[];
+    incidents?: Incident[];
 }
 
-export function AIAnalysisPanel({ incidents }: AIAnalysisPanelProps) {
-    // Use real incident if available, otherwise use demo
-    const activeIncident = incidents.find(i => i.status === "active" || i.status === "investigating") || null;
-    const incident = activeIncident || DEMO_INCIDENT;
-    const confidence = activeIncident?.confidence || DEMO_INCIDENT.confidence;
-    const rootCause = activeIncident?.rootCause || DEMO_INCIDENT.rootCause;
+export function AIAnalysisPanel({ incidents: propIncidents }: AIAnalysisPanelProps) {
+    const [fetchedIncidents, setFetchedIncidents] = useState<Incident[]>([]);
+
+    useEffect(() => {
+        if (propIncidents && propIncidents.length > 0) return;
+        async function load() {
+            try {
+                const res = await getIncidents().catch(() => ({ incidents: [], total: 0 }));
+                setFetchedIncidents(res.incidents || []);
+            } catch { }
+        }
+        load();
+        const interval = setInterval(load, 15000);
+        return () => clearInterval(interval);
+    }, [propIncidents]);
+
+    const incidents = (propIncidents && propIncidents.length > 0) ? propIncidents : fetchedIncidents;
+    const activeIncident = incidents.find(i => i.status === "active" || i.status === "investigating") || incidents[0] || null;
+
+    const title = activeIncident?.title || "No active incidents";
+    const severity = activeIncident?.severity || "low";
+    const confidence = activeIncident?.confidence || 0;
+    const rootCause = activeIncident?.rootCause || "No root cause data available.";
+    const blastRadius = activeIncident?.blastRadius || [];
+    const incidentId = activeIncident?.id || "—";
+    const startedAt = activeIncident?.startedAt;
+
+    const timeAgo = startedAt ? getTimeAgo(startedAt) : "—";
+
+    const timeline = activeIncident?.evidence?.map((e, i) => ({
+        time: `${(activeIncident.evidence?.length || 0) - i}m ago`,
+        event: e,
+        status: i === 0 ? "critical" as const : i < 3 ? "warning" as const : "info" as const,
+    })) || [
+            { time: timeAgo, event: title, status: "critical" as const },
+        ];
 
     return (
         <div className="h-full flex flex-col overflow-y-auto scrollbar pr-1">
             {/* Header */}
             <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
-                    <span className={`inline-flex items-center px-2 py-0.5 text-2xs font-semibold border rounded-md uppercase tracking-wide ${incident.severity === "critical"
-                            ? "bg-red-500/10 text-red-400 border-red-500/20 shadow-[0_0_8px_-2px_rgba(239,68,68,0.3)]"
-                            : "bg-amber-500/10 text-amber-400 border-amber-500/20"
+                    <span className={`inline-flex items-center px-2 py-0.5 text-2xs font-semibold border rounded-md uppercase tracking-wide ${severity === "critical"
+                        ? "bg-red-500/10 text-red-400 border-red-500/20 shadow-[0_0_8px_-2px_rgba(239,68,68,0.3)]"
+                        : severity === "high"
+                            ? "bg-amber-500/10 text-amber-400 border-amber-500/20"
+                            : "bg-blue-500/10 text-blue-400 border-blue-500/20"
                         }`}>
-                        {incident.severity}
+                        {severity}
                     </span>
                 </div>
-                <span className="text-2xs text-slate-500 font-mono">Incident ID: {incident.id || DEMO_INCIDENT.id}</span>
+                <span className="text-2xs text-slate-500 font-mono">Incident ID: {incidentId}</span>
             </div>
 
             {/* Incident title + confidence */}
             <div className="flex items-start gap-3 mb-4 p-3 rounded-xl bg-red-500/5 border border-red-500/10">
                 <AlertTriangle className="w-4 h-4 text-red-400 mt-0.5 shrink-0" />
                 <div className="flex-1 min-w-0">
-                    <p className="text-[13px] text-slate-200 font-medium leading-snug">{incident.title || DEMO_INCIDENT.title}</p>
+                    <p className="text-[13px] text-slate-200 font-medium leading-snug">{title}</p>
                     <p className="text-2xs text-slate-500 mt-1">
-                        Started 7m ago · Affecting 1 service
+                        Started {timeAgo} · Affecting {blastRadius.length || 1} service{blastRadius.length !== 1 ? "s" : ""}
                     </p>
                 </div>
                 <div className="text-right shrink-0">
@@ -77,7 +84,7 @@ export function AIAnalysisPanel({ incidents }: AIAnalysisPanelProps) {
                     <h4 className="text-xs font-semibold text-slate-300">Incident Timeline</h4>
                 </div>
                 <div className="space-y-2 pl-1">
-                    {DEMO_TIMELINE.map((item, i) => (
+                    {timeline.map((item, i) => (
                         <div key={i} className="flex items-start gap-2.5">
                             <span className="text-2xs text-slate-500 font-mono w-12 shrink-0 mt-0.5">{item.time}</span>
                             <div className={`w-1.5 h-1.5 rounded-full mt-1.5 shrink-0 ${item.status === "critical" ? "bg-red-400" : item.status === "warning" ? "bg-amber-400" : "bg-blue-400"
@@ -114,12 +121,18 @@ export function AIAnalysisPanel({ incidents }: AIAnalysisPanelProps) {
                     <h4 className="text-xs font-semibold text-slate-300">Blast Radius</h4>
                 </div>
                 <div className="grid grid-cols-3 gap-2">
-                    {DEMO_BLAST_RADIUS.map((item, i) => (
-                        <div key={i} className="p-2.5 rounded-lg bg-navy-800/60 border border-[rgba(59,130,246,0.08)] text-center">
-                            <p className="text-sm font-bold text-blue-300 font-mono">{item.value}</p>
-                            <p className="text-2xs text-slate-500 mt-0.5 leading-tight">{item.label}</p>
-                        </div>
-                    ))}
+                    <div className="p-2.5 rounded-lg bg-navy-800/60 border border-[rgba(59,130,246,0.08)] text-center">
+                        <p className="text-sm font-bold text-blue-300 font-mono">{blastRadius.length || 1}</p>
+                        <p className="text-2xs text-slate-500 mt-0.5 leading-tight">Services Impacted</p>
+                    </div>
+                    <div className="p-2.5 rounded-lg bg-navy-800/60 border border-[rgba(59,130,246,0.08)] text-center">
+                        <p className="text-sm font-bold text-blue-300 font-mono">{blastRadius.length > 0 ? blastRadius.length * 4 : "—"}</p>
+                        <p className="text-2xs text-slate-500 mt-0.5 leading-tight">Pods Affected</p>
+                    </div>
+                    <div className="p-2.5 rounded-lg bg-navy-800/60 border border-[rgba(59,130,246,0.08)] text-center">
+                        <p className="text-sm font-bold text-blue-300 font-mono">—</p>
+                        <p className="text-2xs text-slate-500 mt-0.5 leading-tight">Requests/Min</p>
+                    </div>
                 </div>
             </div>
 
@@ -135,8 +148,7 @@ export function AIAnalysisPanel({ incidents }: AIAnalysisPanelProps) {
                     </span>
                 </div>
                 <div className="p-3 rounded-xl bg-emerald-500/5 border border-emerald-500/10 space-y-1.5">
-                    <p className="text-xs text-slate-300">Increase connection pool size and optimize slow queries.</p>
-                    <p className="text-xs text-slate-300">Auto-scaling database recommended.</p>
+                    <p className="text-xs text-slate-300">{rootCause !== "No root cause data available." ? "Investigate and apply remediation for root cause." : "No active recommendations."}</p>
                 </div>
                 <div className="flex items-center justify-between mt-3">
                     <button className="px-4 py-2 rounded-lg bg-gradient-to-r from-blue-500/20 to-purple-500/20 border border-blue-500/30 text-xs font-medium text-blue-300 hover:from-blue-500/30 hover:to-purple-500/30 transition-all hover:shadow-glow-sm">
@@ -144,10 +156,24 @@ export function AIAnalysisPanel({ incidents }: AIAnalysisPanelProps) {
                     </button>
                     <div className="text-right">
                         <p className="text-2xs text-slate-500">Confidence</p>
-                        <p className="text-sm font-bold text-emerald-400 font-mono">94%</p>
+                        <p className="text-sm font-bold text-emerald-400 font-mono">{confidence}%</p>
                     </div>
                 </div>
             </div>
         </div>
     );
+}
+
+function getTimeAgo(iso: string): string {
+    try {
+        const diff = Date.now() - new Date(iso).getTime();
+        const mins = Math.floor(diff / 60000);
+        if (mins < 1) return "just now";
+        if (mins < 60) return `${mins}m ago`;
+        const hours = Math.floor(mins / 60);
+        if (hours < 24) return `${hours}h ago`;
+        return `${Math.floor(hours / 24)}d ago`;
+    } catch {
+        return "—";
+    }
 }

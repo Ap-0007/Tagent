@@ -1,41 +1,10 @@
 "use client";
 
+import { useEffect, useState } from "react";
+import { getRecentEvents, getRemediationHistory, getIncidents, getDeployments, type StreamEvent, type RemediationResult, type Incident, type DeploymentInfo } from "@/lib/api";
 import { GlassPanel } from "@/components/ui/GlassPanel";
 import { AlertTriangle, Wrench, GitBranch, Brain } from "lucide-react";
 import Link from "next/link";
-
-// Hardcoded demo data - will be replaced with real backend data when connected
-const anomalyFeed = [
-    { time: "12:31:42", message: "High error rate detected", service: "payment-service", severity: "critical" as const },
-    { time: "12:31:18", message: "Abnormal latency detected", service: "database", severity: "warning" as const },
-    { time: "12:30:54", message: "CPU saturation increasing", service: "p-10-0-2-15", severity: "warning" as const },
-    { time: "12:30:31", message: "Memory usage anomaly", service: "user-service", severity: "info" as const },
-    { time: "12:29:47", message: "Network packet loss spike", service: "node-01", severity: "warning" as const },
-];
-
-const remediationFeed = [
-    { time: "12:31:22", message: "Increased DB connection pool", service: "payment-service", severity: "success" as const },
-    { time: "12:30:58", message: "Restarted unhealthy pod", service: "payment-svc-4f02", severity: "success" as const },
-    { time: "12:30:33", message: "Scaled deployment", service: "order-service", severity: "success" as const },
-    { time: "12:29:38", message: "Cleared stuck jobs", service: "worker-7/hr", severity: "success" as const },
-    { time: "12:18:44", message: "Rebalanced traffic", service: "ingress-nginx", severity: "success" as const },
-];
-
-const deploymentFeed = [
-    { time: "12:31:30", message: "Deployed payment-service v2.16.0", service: undefined, severity: "success" as const },
-    { time: "12:21:10", message: "Rolled back inventory v2.7.1", service: undefined, severity: "warning" as const },
-    { time: "12:22:10", message: "Deployed user-service v1.34.2", service: undefined, severity: "success" as const },
-    { time: "12:28:11", message: "Updated config - feature flags", service: undefined, severity: "success" as const },
-    { time: "12:27:45", message: "Deployed analytics-worker v1.9.0", service: undefined, severity: "success" as const },
-];
-
-const aiReasoningFeed = [
-    { time: "12:31:42", message: "Detected error rate increase in payment-service...", service: undefined, severity: "critical" as const },
-    { time: "12:31:42", message: "Correlated with DB connection pool saturation...", service: undefined, severity: "warning" as const },
-    { time: "12:31:42", message: "Analyzed slow queries and resource contention...", service: undefined, severity: "info" as const },
-    { time: "12:31:42", message: "Predicted saturation in 6-9 minutes...", service: undefined, severity: "info" as const },
-    { time: "12:31:42", message: "Recommended auto-scaling and query optimization...", service: undefined, severity: "success" as const },
-];
 
 type FeedSeverity = "critical" | "warning" | "info" | "success";
 
@@ -118,7 +87,80 @@ function FeedColumn({ title, icon, items, linkHref, linkText }: FeedColumnProps)
     );
 }
 
+function formatTime(iso: string): string {
+    try {
+        const d = new Date(iso);
+        return d.toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    } catch {
+        return "—";
+    }
+}
+
+function mapEventSeverity(sev: string): FeedSeverity {
+    if (sev === "critical" || sev === "error") return "critical";
+    if (sev === "warning") return "warning";
+    if (sev === "success" || sev === "resolved") return "success";
+    return "info";
+}
+
 export function OperationsFeed() {
+    const [anomalyFeed, setAnomalyFeed] = useState<FeedItemData[]>([]);
+    const [remediationFeed, setRemediationFeed] = useState<FeedItemData[]>([]);
+    const [deploymentFeed, setDeploymentFeed] = useState<FeedItemData[]>([]);
+    const [aiReasoningFeed, setAiReasoningFeed] = useState<FeedItemData[]>([]);
+
+    useEffect(() => {
+        async function load() {
+            try {
+                const [eventsRes, remHistory, incidentsRes, deploymentsRes] = await Promise.all([
+                    getRecentEvents().catch(() => ({ events: [], total: 0 })),
+                    getRemediationHistory().catch(() => ({ history: [], total: 0 })),
+                    getIncidents().catch(() => ({ incidents: [], total: 0 })),
+                    getDeployments().catch(() => []),
+                ]);
+
+                // Anomaly feed from events
+                const anomalies: FeedItemData[] = (eventsRes.events || []).slice(0, 5).map((e: StreamEvent) => ({
+                    time: formatTime(e.timestamp),
+                    message: e.title || e.detail,
+                    service: e.source,
+                    severity: mapEventSeverity(e.severity),
+                }));
+                setAnomalyFeed(anomalies);
+
+                // Remediation feed from history
+                const rems: FeedItemData[] = (remHistory.history || []).slice(0, 5).map((r: RemediationResult) => ({
+                    time: formatTime(r.timestamp),
+                    message: `${r.action}: ${r.message}`,
+                    service: r.target,
+                    severity: r.status === "success" ? "success" as FeedSeverity : "warning" as FeedSeverity,
+                }));
+                setRemediationFeed(rems);
+
+                // Deployment feed from deployments
+                const deps: FeedItemData[] = (deploymentsRes || []).slice(0, 5).map((d: DeploymentInfo) => ({
+                    time: d.age || "—",
+                    message: `Deployed ${d.name} (${d.ready}/${d.replicas} ready)`,
+                    service: d.namespace,
+                    severity: d.ready === d.replicas ? "success" as FeedSeverity : "warning" as FeedSeverity,
+                }));
+                setDeploymentFeed(deps);
+
+                // AI Reasoning feed from incidents
+                const aiItems: FeedItemData[] = (incidentsRes.incidents || []).slice(0, 5).map((inc: Incident) => ({
+                    time: formatTime(inc.startedAt),
+                    message: `${inc.title} — ${inc.rootCause || "Analyzing..."}`,
+                    service: inc.service,
+                    severity: mapEventSeverity(inc.severity),
+                }));
+                setAiReasoningFeed(aiItems);
+            } catch { }
+        }
+        load();
+        const interval = setInterval(load, 15000);
+        return () => clearInterval(interval);
+    }, []);
+
     return (
         <div>
             <div className="flex items-center justify-between mb-3">

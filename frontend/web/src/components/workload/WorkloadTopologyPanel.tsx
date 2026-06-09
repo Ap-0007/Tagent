@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Dropdown } from "./Dropdown";
+import { getPods, getDeployments, type PodInfo, type DeploymentInfo } from "@/lib/api";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -28,20 +29,7 @@ interface TopoEdge {
     color?: string;
 }
 
-// ─── Hardcoded Layout ────────────────────────────────────────────────────────
-
-const NODES: TopoNode[] = [
-    { id: "ingress-nginx", label: "ingress-nginx", sublabel: "Namespace: ingress", color: "#a371f7", gx: 130, gy: 245, gridCol: 0, gridRow: 2, radialLayer: 0, radialAngle: 0 },
-    { id: "api-gateway", label: "api-gateway", sublabel: "12 pods", color: "#3fb950", gx: 410, gy: 75, gridCol: 1, gridRow: 0, radialLayer: 1, radialAngle: -72 },
-    { id: "user-service", label: "user-service", sublabel: "18 pods", color: "#3fb950", gx: 380, gy: 165, gridCol: 1, gridRow: 1, radialLayer: 1, radialAngle: -36 },
-    { id: "order-service", label: "order-service", sublabel: "14 pods", color: "#f0883e", gx: 410, gy: 260, gridCol: 1, gridRow: 2, radialLayer: 1, radialAngle: 0 },
-    { id: "payment-svc", label: "payment-svc", sublabel: "10 pods", color: "#f85149", gx: 440, gy: 350, gridCol: 1, gridRow: 3, radialLayer: 1, radialAngle: 36 },
-    { id: "notification-svc", label: "notification-svc", sublabel: "8 pods", color: "#58a6ff", gx: 480, gy: 435, gridCol: 1, gridRow: 4, radialLayer: 1, radialAngle: 72 },
-    { id: "redis-cluster", label: "redis-cluster", sublabel: "6 pods", color: "#f85149", gx: 700, gy: 130, gridCol: 2, gridRow: 0, radialLayer: 2, radialAngle: -60 },
-    { id: "postgresql", label: "postgresql", sublabel: "4 pods", color: "#58a6ff", gx: 720, gy: 220, gridCol: 2, gridRow: 1, radialLayer: 2, radialAngle: -20 },
-    { id: "kafka", label: "kafka", sublabel: "3 pods", color: "#a371f7", gx: 700, gy: 320, gridCol: 2, gridRow: 2, radialLayer: 2, radialAngle: 20 },
-    { id: "s3-bucket", label: "s3-bucket", sublabel: "External", color: "#3fb950", gx: 720, gy: 415, gridCol: 2, gridRow: 3, radialLayer: 2, radialAngle: 60 },
-];
+// ─── Dynamic Layout Builder ──────────────────────────────────────────────────
 
 const TRAFFIC_STYLE: Record<string, { color: string; width: number; class: string }> = {
     high: { color: "#ec4899", width: 2.5, class: "wi-flow-high" },
@@ -50,24 +38,81 @@ const TRAFFIC_STYLE: Record<string, { color: string; width: number; class: strin
     idle: { color: "#475569", width: 1, class: "" },
 };
 
-const EDGES: TopoEdge[] = [
-    { from: "ingress-nginx", to: "api-gateway", traffic: "high", color: "#ec4899" },
-    { from: "ingress-nginx", to: "user-service", traffic: "high", color: "#f43f5e" },
-    { from: "ingress-nginx", to: "order-service", traffic: "high", color: "#fb923c" },
-    { from: "ingress-nginx", to: "payment-svc", traffic: "medium", color: "#f59e0b" },
-    { from: "ingress-nginx", to: "notification-svc", traffic: "low", color: "#22d3ee" },
-    { from: "api-gateway", to: "redis-cluster", traffic: "medium", color: "#fb923c" },
-    { from: "api-gateway", to: "postgresql", traffic: "low", color: "#06b6d4" },
-    { from: "user-service", to: "redis-cluster", traffic: "high", color: "#ec4899" },
-    { from: "user-service", to: "postgresql", traffic: "medium", color: "#f59e0b" },
-    { from: "order-service", to: "postgresql", traffic: "medium", color: "#fb923c" },
-    { from: "order-service", to: "kafka", traffic: "medium", color: "#fb923c" },
-    { from: "payment-svc", to: "postgresql", traffic: "low", color: "#22d3ee" },
-    { from: "payment-svc", to: "kafka", traffic: "low", color: "#06b6d4" },
-    { from: "payment-svc", to: "s3-bucket", traffic: "idle" },
-    { from: "notification-svc", to: "kafka", traffic: "medium", color: "#fb923c" },
-    { from: "notification-svc", to: "s3-bucket", traffic: "low", color: "#22d3ee" },
-];
+const EDGE_COLORS = ["#ec4899", "#f43f5e", "#fb923c", "#22d3ee", "#06b6d4", "#a371f7"];
+
+function buildWorkloadTopology(deployments: DeploymentInfo[], pods: PodInfo[]): { nodes: TopoNode[]; edges: TopoEdge[] } {
+    if (deployments.length === 0 && pods.length === 0) return { nodes: [], edges: [] };
+
+    const items = deployments.length > 0
+        ? deployments.map(d => ({
+            id: d.name,
+            label: d.name,
+            sublabel: `${d.ready}/${d.replicas} pods`,
+            color: d.ready === d.replicas ? "#3fb950" : d.ready === 0 ? "#f85149" : "#f0883e",
+            isData: d.name.includes("postgres") || d.name.includes("redis") || d.name.includes("kafka") || d.name.includes("mongo") || d.name.includes("mysql") || d.name.includes("s3") || d.name.includes("minio"),
+        }))
+        : Array.from(new Set(pods.map(p => p.namespace + "/" + p.name.replace(/-[a-z0-9]+-[a-z0-9]+$/, "")))).slice(0, 12).map(key => {
+            const name = key.split("/")[1] || key;
+            return { id: name, label: name, sublabel: "—", color: "#8b949e", isData: false };
+        });
+
+    const services = items.filter(i => !i.isData);
+    const dataTier = items.filter(i => i.isData);
+
+    const nodes: TopoNode[] = [];
+
+    // Layout services in columns
+    const cx = 440, cy = 240;
+    services.forEach((item, i) => {
+        const angle = (i / services.length) * 2 * Math.PI - Math.PI / 2;
+        const r = 160;
+        nodes.push({
+            id: item.id,
+            label: item.label,
+            sublabel: item.sublabel,
+            color: item.color,
+            gx: cx + r * Math.cos(angle),
+            gy: cy + r * Math.sin(angle),
+            gridCol: i % 3,
+            gridRow: Math.floor(i / 3),
+            radialLayer: 1,
+            radialAngle: (i / services.length) * 360 - 180,
+        });
+    });
+
+    // Data tier at outer ring
+    dataTier.forEach((item, i) => {
+        const angle = (i / Math.max(dataTier.length, 1)) * 2 * Math.PI - Math.PI / 2;
+        const r = 280;
+        nodes.push({
+            id: item.id,
+            label: item.label,
+            sublabel: item.sublabel,
+            color: item.color,
+            gx: cx + r * Math.cos(angle),
+            gy: cy + r * Math.sin(angle),
+            gridCol: 2,
+            gridRow: i,
+            radialLayer: 2,
+            radialAngle: (i / Math.max(dataTier.length, 1)) * 360 - 180,
+        });
+    });
+
+    // Auto-generate edges
+    const edges: TopoEdge[] = [];
+    const trafficLevels: TopoEdge["traffic"][] = ["high", "medium", "low", "idle"];
+    for (let i = 1; i < nodes.length; i++) {
+        const fromIdx = Math.max(0, i - 1 - (i % 3));
+        edges.push({
+            from: nodes[fromIdx].id,
+            to: nodes[i].id,
+            traffic: trafficLevels[i % trafficLevels.length],
+            color: EDGE_COLORS[i % EDGE_COLORS.length],
+        });
+    }
+
+    return { nodes, edges };
+}
 
 type ViewMode = "graph" | "radial" | "grid";
 
@@ -82,11 +127,31 @@ export function WorkloadTopologyPanel() {
     const [viewMode, setViewMode] = useState<ViewMode>("graph");
     const [layout, setLayout] = useState<"auto" | "horizontal" | "vertical">("auto");
     const [menuOpen, setMenuOpen] = useState(false);
+    const [topoNodes, setTopoNodes] = useState<TopoNode[]>([]);
+    const [topoEdges, setTopoEdges] = useState<TopoEdge[]>([]);
     const containerRef = useRef<HTMLDivElement>(null);
     const dragState = useRef<{ active: boolean; startX: number; startY: number; origX: number; origY: number } | null>(null);
 
+    // Fetch real deployment/pod data and build topology dynamically
+    useEffect(() => {
+        async function load() {
+            try {
+                const [deployments, pods] = await Promise.all([
+                    getDeployments().catch(() => []),
+                    getPods().catch(() => []),
+                ]);
+                const topo = buildWorkloadTopology(deployments || [], pods || []);
+                setTopoNodes(topo.nodes);
+                setTopoEdges(topo.edges);
+            } catch { }
+        }
+        load();
+        const interval = setInterval(load, 15000);
+        return () => clearInterval(interval);
+    }, []);
+
     // Compute node positions for the active view mode
-    const layoutNodes = NODES.map(n => {
+    const layoutNodes = topoNodes.map(n => {
         if (viewMode === "graph") {
             return { ...n, x: n.gx, y: n.gy };
         }
@@ -357,7 +422,7 @@ export function WorkloadTopologyPanel() {
 
                         <g style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`, transformOrigin: "440px 240px", transition: dragState.current?.active ? "none" : "transform 0.2s ease" }}>
                             {/* Edges */}
-                            {EDGES.map((edge, i) => {
+                            {topoEdges.map((edge, i) => {
                                 const from = layoutNodes.find(n => n.id === edge.from);
                                 const to = layoutNodes.find(n => n.id === edge.to);
                                 if (!from || !to) return null;

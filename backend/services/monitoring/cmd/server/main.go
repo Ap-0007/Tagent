@@ -20,6 +20,8 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 
 	"github.com/tagent-ai/tagent/backend/services/monitoring/internal/detector"
+	"github.com/tagent-ai/tagent/backend/services/monitoring/internal/loki"
+	"github.com/tagent-ai/tagent/backend/services/monitoring/internal/tracing"
 )
 
 var (
@@ -107,10 +109,200 @@ func main() {
 		c.Data(200, "application/json", queryPromRaw(`container_memory_working_set_bytes{container!=""}`))
 	})
 
+	// Network I/O metrics (from Prometheus node_network_* metrics)
+	router.GET("/metrics/network", func(c *gin.Context) {
+		// Query network receive/transmit bytes rate per node
+		rxBytesPerSec := queryPromSingle(`sum(rate(node_network_receive_bytes_total{device!~"lo|veth.*|docker.*|br-.*"}[5m]))`)
+		txBytesPerSec := queryPromSingle(`sum(rate(node_network_transmit_bytes_total{device!~"lo|veth.*|docker.*|br-.*"}[5m]))`)
+		rxPacketsPerSec := queryPromSingle(`sum(rate(node_network_receive_packets_total{device!~"lo|veth.*|docker.*|br-.*"}[5m]))`)
+		txPacketsPerSec := queryPromSingle(`sum(rate(node_network_transmit_packets_total{device!~"lo|veth.*|docker.*|br-.*"}[5m]))`)
+		rxErrors := queryPromSingle(`sum(rate(node_network_receive_errs_total{device!~"lo|veth.*|docker.*|br-.*"}[5m]))`)
+		txErrors := queryPromSingle(`sum(rate(node_network_transmit_errs_total{device!~"lo|veth.*|docker.*|br-.*"}[5m]))`)
+		rxDropped := queryPromSingle(`sum(rate(node_network_receive_drop_total{device!~"lo|veth.*|docker.*|br-.*"}[5m]))`)
+		txDropped := queryPromSingle(`sum(rate(node_network_transmit_drop_total{device!~"lo|veth.*|docker.*|br-.*"}[5m]))`)
+
+		// Per-node breakdown
+		nodeNetRx := queryPromVector(`sum by (instance) (rate(node_network_receive_bytes_total{device!~"lo|veth.*|docker.*|br-.*"}[5m]))`)
+		nodeNetTx := queryPromVector(`sum by (instance) (rate(node_network_transmit_bytes_total{device!~"lo|veth.*|docker.*|br-.*"}[5m]))`)
+
+		// Format bandwidth
+		totalBandwidth := rxBytesPerSec + txBytesPerSec
+		bandwidthStr := formatBytes(totalBandwidth) + "/s"
+
+		c.JSON(200, gin.H{
+			"total_bandwidth":       bandwidthStr,
+			"receive_bytes_per_sec": rxBytesPerSec,
+			"transmit_bytes_per_sec": txBytesPerSec,
+			"receive_packets_per_sec": rxPacketsPerSec,
+			"transmit_packets_per_sec": txPacketsPerSec,
+			"receive_errors_per_sec": rxErrors,
+			"transmit_errors_per_sec": txErrors,
+			"receive_dropped_per_sec": rxDropped,
+			"transmit_dropped_per_sec": txDropped,
+			"node_receive": nodeNetRx,
+			"node_transmit": nodeNetTx,
+		})
+	})
+
+	// Service Mesh Traffic Telemetry (Istio/Envoy/Prometheus)
+	router.GET("/metrics/traffic", func(c *gin.Context) {
+		// Total request rate (requests/sec) from Istio or generic HTTP metrics
+		requestsPerSec := queryPromSingle(`sum(rate(istio_requests_total[5m]))`)
+		if requestsPerSec == 0 {
+			// Fallback: try generic container HTTP metrics
+			requestsPerSec = queryPromSingle(`sum(rate(http_requests_total[5m]))`)
+		}
+
+		// Error rate (5xx responses)
+		errorsPerSec := queryPromSingle(`sum(rate(istio_requests_total{response_code=~"5.."}[5m]))`)
+		if errorsPerSec == 0 {
+			errorsPerSec = queryPromSingle(`sum(rate(http_requests_total{code=~"5.."}[5m]))`)
+		}
+
+		// P50, P95, P99 latency from Istio histograms
+		p50Latency := queryPromSingle(`histogram_quantile(0.50, sum(rate(istio_request_duration_milliseconds_bucket[5m])) by (le))`)
+		p95Latency := queryPromSingle(`histogram_quantile(0.95, sum(rate(istio_request_duration_milliseconds_bucket[5m])) by (le))`)
+		p99Latency := queryPromSingle(`histogram_quantile(0.99, sum(rate(istio_request_duration_milliseconds_bucket[5m])) by (le))`)
+
+		// Fallback to request_duration_seconds if Istio metrics not available
+		if p95Latency == 0 {
+			p95Latency = queryPromSingle(`histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le))`) * 1000
+			p99Latency = queryPromSingle(`histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket[5m])) by (le))`) * 1000
+			p50Latency = queryPromSingle(`histogram_quantile(0.50, sum(rate(http_request_duration_seconds_bucket[5m])) by (le))`) * 1000
+		}
+
+		// Per-service breakdown
+		serviceTraffic := queryPromVector(`sum by (destination_service_name) (rate(istio_requests_total[5m]))`)
+
+		// Success rate
+		totalReqs := queryPromSingle(`sum(rate(istio_requests_total[5m]))`)
+		successReqs := queryPromSingle(`sum(rate(istio_requests_total{response_code=~"2.."}[5m]))`)
+		successRate := 0.0
+		if totalReqs > 0 {
+			successRate = (successReqs / totalReqs) * 100
+		}
+
+		// Throughput in bytes/sec
+		throughput := queryPromSingle(`sum(rate(istio_tcp_sent_bytes_total[5m])) + sum(rate(istio_tcp_received_bytes_total[5m]))`)
+
+		c.JSON(200, gin.H{
+			"requests_per_sec":  requestsPerSec,
+			"errors_per_sec":    errorsPerSec,
+			"error_rate_percent": func() float64 { if requestsPerSec > 0 { return (errorsPerSec / requestsPerSec) * 100 }; return 0 }(),
+			"p50_latency_ms":    p50Latency,
+			"p95_latency_ms":    p95Latency,
+			"p99_latency_ms":    p99Latency,
+			"success_rate":      successRate,
+			"throughput_bytes":   throughput,
+			"throughput":         formatBytes(throughput) + "/s",
+			"service_traffic":    serviceTraffic,
+		})
+	})
+
 	// Incidents detected by the rules engine
 	router.GET("/incidents", func(c *gin.Context) {
 		incidents := det.GetIncidents()
 		c.JSON(200, gin.H{"incidents": incidents, "total": len(incidents)})
+	})
+
+	// Log Search (Loki integration with K8s fallback)
+	router.POST("/logs/search", func(c *gin.Context) {
+		var req struct {
+			Query     string `json:"query"`
+			Namespace string `json:"namespace"`
+			Start     string `json:"start"`
+			End       string `json:"end"`
+			Limit     int    `json:"limit"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(400, gin.H{"error": err.Error()})
+			return
+		}
+
+		start := time.Now().Add(-1 * time.Hour)
+		end := time.Now()
+		if req.Start != "" {
+			if t, err := time.Parse(time.RFC3339, req.Start); err == nil {
+				start = t
+			}
+		}
+		if req.End != "" {
+			if t, err := time.Parse(time.RFC3339, req.End); err == nil {
+				end = t
+			}
+		}
+		if req.Limit <= 0 {
+			req.Limit = 100
+		}
+
+		// Try Loki first
+		lokiClient := loki.New()
+		if lokiClient.IsConfigured() {
+			result, err := lokiClient.Search(c.Request.Context(), req.Query, req.Namespace, start, end, req.Limit)
+			if err == nil {
+				c.JSON(200, result)
+				return
+			}
+			log.Printf("[logs] Loki search failed, falling back to K8s: %v", err)
+		}
+
+		// Fallback: K8s pod logs (limited)
+		c.JSON(200, gin.H{
+			"entries": []gin.H{},
+			"total":   0,
+			"query":   req.Query,
+			"source":  "kubernetes-fallback",
+			"message": "Loki not configured. Configure LOKI_URL for historical log search.",
+		})
+	})
+
+	// Distributed Tracing (Jaeger integration)
+	jaegerClient := tracing.New()
+
+	router.GET("/traces", func(c *gin.Context) {
+		if !jaegerClient.IsConfigured() {
+			c.JSON(200, gin.H{"traces": []gin.H{}, "total": 0, "source": "unavailable", "message": "Jaeger not configured. Set JAEGER_QUERY_URL."})
+			return
+		}
+		service := c.Query("service")
+		operation := c.Query("operation")
+		minDuration := c.Query("minDuration")
+		limit := 20
+		start := time.Now().Add(-1 * time.Hour)
+		end := time.Now()
+
+		result, err := jaegerClient.SearchTraces(c.Request.Context(), service, operation, minDuration, limit, start, end)
+		if err != nil {
+			c.JSON(502, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(200, result)
+	})
+
+	router.GET("/traces/:id", func(c *gin.Context) {
+		if !jaegerClient.IsConfigured() {
+			c.JSON(503, gin.H{"error": "Jaeger not configured"})
+			return
+		}
+		trace, err := jaegerClient.GetTrace(c.Request.Context(), c.Param("id"))
+		if err != nil {
+			c.JSON(404, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(200, trace)
+	})
+
+	router.GET("/traces/services", func(c *gin.Context) {
+		if !jaegerClient.IsConfigured() {
+			c.JSON(200, gin.H{"services": []string{}, "source": "unavailable"})
+			return
+		}
+		services, err := jaegerClient.GetServices(c.Request.Context())
+		if err != nil {
+			c.JSON(502, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(200, gin.H{"services": services, "source": "jaeger"})
 	})
 
 	log.Printf("Tagent Monitoring Service starting on port %s", port)
@@ -222,4 +414,63 @@ func envOr(key, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+// queryPromVector returns a map of label → value from a Prometheus vector query.
+func queryPromVector(query string) []gin.H {
+	u := fmt.Sprintf("%s/api/v1/query?query=%s", prometheusURL, url.QueryEscape(query))
+	resp, err := http.Get(u)
+	if err != nil {
+		return nil
+	}
+	defer resp.Body.Close()
+
+	var result struct {
+		Data struct {
+			Result []struct {
+				Metric map[string]string `json:"metric"`
+				Value  []interface{}     `json:"value"`
+			} `json:"result"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil
+	}
+
+	var items []gin.H
+	for _, r := range result.Data.Result {
+		val := 0.0
+		if len(r.Value) >= 2 {
+			if v, ok := r.Value[1].(string); ok {
+				fmt.Sscanf(v, "%f", &val)
+			}
+		}
+		instance := r.Metric["instance"]
+		if instance == "" {
+			instance = r.Metric["node"]
+		}
+		items = append(items, gin.H{
+			"node":           instance,
+			"bytes_per_sec":  val,
+			"formatted":      formatBytes(val) + "/s",
+		})
+	}
+	return items
+}
+
+// formatBytes formats bytes into human-readable string (KB, MB, GB, TB).
+func formatBytes(bytes float64) string {
+	if bytes >= 1e12 {
+		return fmt.Sprintf("%.1f TB", bytes/1e12)
+	}
+	if bytes >= 1e9 {
+		return fmt.Sprintf("%.1f GB", bytes/1e9)
+	}
+	if bytes >= 1e6 {
+		return fmt.Sprintf("%.1f MB", bytes/1e6)
+	}
+	if bytes >= 1e3 {
+		return fmt.Sprintf("%.1f KB", bytes/1e3)
+	}
+	return fmt.Sprintf("%.0f B", bytes)
 }

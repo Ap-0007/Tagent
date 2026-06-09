@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { getServices, getDeployments, getNetworkMetrics, type ServiceInfo, type DeploymentInfo, type NetworkMetrics } from "@/lib/api";
 
 // ─── Layout ──────────────────────────────────────────────────────────────────
 
@@ -22,57 +23,104 @@ interface Edge {
     width: number;
 }
 
-const NODES: Node[] = [
-    // Row 1: Ingress (top center, purple)
-    { id: "ingress", label: "Ingress", sublabel: "3 pods", x: 440, y: 60, color: "#a371f7" },
-    // Row 2: Web UI / API Gateway / Auth Service
-    { id: "web-ui", label: "Web UI", sublabel: "6 pods", x: 200, y: 175, color: "#3fb950" },
-    { id: "api-gateway", label: "API Gateway", sublabel: "8 pods", x: 440, y: 175, color: "#3fb950" },
-    { id: "auth", label: "Auth Service", sublabel: "4 pods", x: 680, y: 175, color: "#3fb950" },
-    // Row 3: Order / Payment / Notification
-    { id: "order", label: "Order Service", sublabel: "10 pods", x: 200, y: 290, color: "#f0883e" },
-    { id: "payment", label: "Payment Service", sublabel: "6 pods", x: 440, y: 290, color: "#f85149", critical: true },
-    { id: "notification", label: "Notification", sublabel: "4 pods", x: 680, y: 290, color: "#3fb950" },
-    // Row 4: User / Inventory / Analytics
-    { id: "user", label: "User Service", sublabel: "6 pods", x: 200, y: 405, color: "#3fb950" },
-    { id: "inventory", label: "Inventory", sublabel: "8 pods", x: 440, y: 405, color: "#a371f7" },
-    { id: "analytics", label: "Analytics", sublabel: "4 pods", x: 680, y: 405, color: "#f0883e" },
-    // Row 5: Data tier (smaller, at bottom)
-    { id: "postgres", label: "PostgreSQL", sublabel: "Primary", x: 145, y: 510, color: "#a371f7", tier: "data" },
-    { id: "redis", label: "Redis Cluster", sublabel: "3 nodes", x: 340, y: 510, color: "#f85149", tier: "data" },
-    { id: "kafka", label: "Kafka", sublabel: "3 nodes", x: 540, y: 510, color: "#a371f7", tier: "data" },
-    { id: "s3", label: "S3 Bucket", sublabel: "Object Store", x: 740, y: 510, color: "#3fb950", tier: "data" },
-];
+const EDGE_COLORS = ["#ec4899", "#fb923c", "#22d3ee", "#a371f7", "#f85149"];
 
-const EDGES: Edge[] = [
-    // Ingress fan-out
-    { from: "ingress", to: "web-ui", color: "#ec4899", width: 2 },
-    { from: "ingress", to: "api-gateway", color: "#ec4899", width: 2.5 },
-    { from: "ingress", to: "auth", color: "#fb923c", width: 1.8 },
-    // API Gateway → row 3
-    { from: "api-gateway", to: "order", color: "#ec4899", width: 2 },
-    { from: "api-gateway", to: "payment", color: "#f85149", width: 2.5 },
-    { from: "api-gateway", to: "notification", color: "#fb923c", width: 1.8 },
-    // Auth → User
-    { from: "auth", to: "user", color: "#fb923c", width: 1.5 },
-    // Web UI → User
-    { from: "web-ui", to: "user", color: "#22d3ee", width: 1.5 },
-    // Cross-cluster
-    { from: "order", to: "inventory", color: "#fb923c", width: 1.8 },
-    { from: "payment", to: "inventory", color: "#f85149", width: 2 },
-    { from: "notification", to: "analytics", color: "#fb923c", width: 1.5 },
-    { from: "user", to: "inventory", color: "#22d3ee", width: 1.5 },
-    // Data tier
-    { from: "user", to: "postgres", color: "#a371f7", width: 1.5 },
-    { from: "order", to: "postgres", color: "#a371f7", width: 1.5 },
-    { from: "payment", to: "postgres", color: "#f85149", width: 2 },
-    { from: "inventory", to: "redis", color: "#fb923c", width: 1.5 },
-    { from: "user", to: "redis", color: "#22d3ee", width: 1.5 },
-    { from: "notification", to: "kafka", color: "#a371f7", width: 1.5 },
-    { from: "order", to: "kafka", color: "#fb923c", width: 1.5 },
-    { from: "analytics", to: "kafka", color: "#a371f7", width: 1.5 },
-    { from: "analytics", to: "s3", color: "#22d3ee", width: 1.2 },
-];
+// Build topology nodes dynamically from real deployments + services
+function buildTopology(deployments: DeploymentInfo[], services: ServiceInfo[]): { nodes: Node[]; edges: Edge[] } {
+    const allItems = [
+        ...deployments.map(d => ({
+            id: d.name,
+            label: d.name,
+            sublabel: `${d.ready}/${d.replicas} pods`,
+            color: d.ready === d.replicas ? "#3fb950" : d.ready === 0 ? "#f85149" : "#f0883e",
+            critical: d.ready === 0,
+            isData: d.name.includes("postgres") || d.name.includes("redis") || d.name.includes("kafka") || d.name.includes("mongo") || d.name.includes("mysql") || d.name.includes("s3") || d.name.includes("minio"),
+        })),
+        ...services
+            .filter(s => !deployments.some(d => d.name === s.name))
+            .map(s => ({
+                id: s.name,
+                label: s.name,
+                sublabel: s.type || "Service",
+                color: "#3fb950",
+                critical: false,
+                isData: s.name.includes("postgres") || s.name.includes("redis") || s.name.includes("kafka") || s.name.includes("mongo") || s.name.includes("mysql"),
+            })),
+    ];
+
+    if (allItems.length === 0) return { nodes: [], edges: [] };
+
+    // Separate data tier from services
+    const dataTier = allItems.filter(i => i.isData);
+    const serviceTier = allItems.filter(i => !i.isData);
+
+    // Layout services in rows of 3-4
+    const maxPerRow = Math.min(4, Math.max(3, Math.ceil(Math.sqrt(serviceTier.length))));
+    const nodes: Node[] = [];
+
+    serviceTier.forEach((item, i) => {
+        const row = Math.floor(i / maxPerRow);
+        const col = i % maxPerRow;
+        const rowCount = Math.min(maxPerRow, serviceTier.length - row * maxPerRow);
+        const rowWidth = rowCount * 200;
+        const startX = (880 - rowWidth) / 2 + 100;
+        nodes.push({
+            id: item.id,
+            label: item.label,
+            sublabel: item.sublabel,
+            x: startX + col * 200,
+            y: 80 + row * 120,
+            color: item.color,
+            critical: item.critical,
+            tier: "service",
+        });
+    });
+
+    // Data tier at bottom
+    const dataY = nodes.length > 0 ? Math.max(...nodes.map(n => n.y)) + 130 : 300;
+    dataTier.forEach((item, i) => {
+        const rowWidth = dataTier.length * 180;
+        const startX = (880 - rowWidth) / 2 + 90;
+        nodes.push({
+            id: item.id,
+            label: item.label,
+            sublabel: item.sublabel,
+            x: startX + i * 180,
+            y: dataY,
+            color: item.color,
+            critical: item.critical,
+            tier: "data",
+        });
+    });
+
+    // Auto-generate edges between adjacent rows
+    const edges: Edge[] = [];
+    const serviceNodes = nodes.filter(n => n.tier === "service");
+    for (let i = 1; i < serviceNodes.length; i++) {
+        const fromIdx = Math.max(0, i - Math.ceil(Math.random() * 3));
+        edges.push({
+            from: serviceNodes[fromIdx].id,
+            to: serviceNodes[i].id,
+            color: EDGE_COLORS[i % EDGE_COLORS.length],
+            width: 1.5 + Math.random(),
+        });
+    }
+    // Connect some services to data tier
+    const dataNodes = nodes.filter(n => n.tier === "data");
+    dataNodes.forEach((dn, i) => {
+        const svcIdx = i % serviceNodes.length;
+        if (serviceNodes[svcIdx]) {
+            edges.push({
+                from: serviceNodes[svcIdx].id,
+                to: dn.id,
+                color: "#a371f7",
+                width: 1.5,
+            });
+        }
+    });
+
+    return { nodes, edges };
+}
 
 type LayerTab = "traffic" | "health" | "labels";
 
@@ -92,11 +140,34 @@ export function KubernetesTopology() {
     const [viewMode, setViewMode] = useState<"Dynamic" | "Static" | "Compact">("Dynamic");
     const [menuOpen, setMenuOpen] = useState(false);
     const [toast, setToast] = useState<string | null>(null);
+    const [nodes, setNodes] = useState<Node[]>([]);
+    const [edges, setEdges] = useState<Edge[]>([]);
+    const [networkData, setNetworkData] = useState<NetworkMetrics | null>(null);
     const drag = useRef<{ active: boolean; startX: number; startY: number; origX: number; origY: number } | null>(null);
 
+    // Fetch real data and build topology dynamically
+    useEffect(() => {
+        async function load() {
+            try {
+                const [svcList, deployments, network] = await Promise.all([
+                    getServices().catch(() => []),
+                    getDeployments().catch(() => []),
+                    getNetworkMetrics().catch(() => null),
+                ]);
+                const topo = buildTopology(deployments || [], svcList || []);
+                setNodes(topo.nodes);
+                setEdges(topo.edges);
+                setNetworkData(network);
+            } catch { }
+        }
+        load();
+        const interval = setInterval(load, 15000);
+        return () => clearInterval(interval);
+    }, []);
+
     // Data-driven sizing: total visible nodes determines canvas height
-    const totalVisible = (activeLayers.includes("services") ? NODES.filter(n => n.tier !== "data").length : 0)
-        + (activeLayers.includes("data") ? NODES.filter(n => n.tier === "data").length : 0);
+    const totalVisible = (activeLayers.includes("services") ? nodes.filter(n => n.tier !== "data").length : 0)
+        + (activeLayers.includes("data") ? nodes.filter(n => n.tier === "data").length : 0);
     // ~280px for ~6 nodes, scales up to ~520px at 14+ nodes
     const dynamicHeight = Math.max(280, Math.min(560, 200 + totalVisible * 24));
 
@@ -157,10 +228,10 @@ export function KubernetesTopology() {
     const showServices = activeLayers.includes("services");
 
     // Filter nodes/edges by active layers
-    const visibleNodes = NODES.filter(n => (n.tier === "data" ? showData : showServices));
-    const visibleEdges = !showEdges ? [] : EDGES.filter(e => {
-        const f = NODES.find(n => n.id === e.from);
-        const t = NODES.find(n => n.id === e.to);
+    const visibleNodes = nodes.filter(n => (n.tier === "data" ? showData : showServices));
+    const visibleEdges = !showEdges ? [] : edges.filter(e => {
+        const f = nodes.find(n => n.id === e.from);
+        const t = nodes.find(n => n.id === e.to);
         if (!f || !t) return false;
         if (f.tier === "data" && !showData) return false;
         if (t.tier === "data" && !showData) return false;
@@ -172,8 +243,8 @@ export function KubernetesTopology() {
     // Layer tab affects edge color rendering
     const recolorEdge = (edge: Edge): { color: string; opacity: number } => {
         if (layer === "health") {
-            const t = NODES.find(n => n.id === edge.to);
-            const f = NODES.find(n => n.id === edge.from);
+            const t = nodes.find(n => n.id === edge.to);
+            const f = nodes.find(n => n.id === edge.from);
             const critical = t?.critical || f?.critical;
             return { color: critical ? "#f85149" : t?.color === "#f0883e" ? "#f0883e" : "#3fb950", opacity: 0.85 };
         }
@@ -417,8 +488,8 @@ export function KubernetesTopology() {
                         }}>
                             {/* Edges */}
                             {visibleEdges.map((e, i) => {
-                                const from = NODES.find(n => n.id === e.from)!;
-                                const to = NODES.find(n => n.id === e.to)!;
+                                const from = nodes.find(n => n.id === e.from)!;
+                                const to = nodes.find(n => n.id === e.to)!;
                                 const dx = to.x - from.x;
                                 const dy = to.y - from.y;
                                 const len = Math.sqrt(dx * dx + dy * dy) || 1;
@@ -474,10 +545,11 @@ export function KubernetesTopology() {
 
                 {/* Bottom telemetry */}
                 <div className="flex flex-wrap items-center gap-x-6 gap-y-2 px-4 py-2.5 border-t border-[#21262d] bg-[#0d1117]/40 shrink-0">
-                    <Telemetry label="Traffic" value="2.4 Tbps" sparkColor="#3fb950" sparkPoints="0,8 8,7 16,9 24,6 32,8 40,5 48,7" />
-                    <Telemetry label="Requests" value="45.2K/s" sparkColor="#58a6ff" sparkPoints="0,9 8,7 16,8 24,5 32,7 40,4 48,6" />
-                    <Telemetry label="Errors" value="12/s" sparkColor="#f85149" sparkPoints="0,6 8,4 16,9 24,3 32,8 40,5 48,9" valueColor="#f85149" />
-                    <Telemetry label="P95 Latency" value="234ms" sparkColor="#f0883e" sparkPoints="0,7 8,6 16,8 24,5 32,7 40,4 48,6" valueColor="#f0883e" />
+                    <Telemetry label="Traffic" value={networkData?.total_bandwidth || "—"} sparkColor="#3fb950" sparkPoints="0,8 8,7 16,9 24,6 32,8 40,5 48,7" />
+                    <Telemetry label="Rx" value={networkData ? formatNetBytes(networkData.receive_bytes_per_sec) : "—"} sparkColor="#58a6ff" sparkPoints="0,9 8,7 16,8 24,5 32,7 40,4 48,6" />
+                    <Telemetry label="Tx" value={networkData ? formatNetBytes(networkData.transmit_bytes_per_sec) : "—"} sparkColor="#22d3ee" sparkPoints="0,6 8,4 16,9 24,3 32,8 40,5 48,9" />
+                    <Telemetry label="Errors" value={networkData ? `${Math.round(networkData.receive_errors_per_sec + networkData.transmit_errors_per_sec)}/s` : "—"} sparkColor="#f85149" sparkPoints="0,6 8,4 16,9 24,3 32,8 40,5 48,9" valueColor="#f85149" />
+                    <Telemetry label="Dropped" value={networkData ? `${Math.round(networkData.receive_dropped_per_sec + networkData.transmit_dropped_per_sec)}/s` : "—"} sparkColor="#f0883e" sparkPoints="0,7 8,6 16,8 24,5 32,7 40,4 48,6" valueColor="#f0883e" />
                 </div>
             </div>
         </>
@@ -609,6 +681,14 @@ function MenuItem({ children, onClick }: { children: React.ReactNode; onClick: (
             {children}
         </button>
     );
+}
+
+function formatNetBytes(bytes: number): string {
+    if (bytes >= 1e12) return `${(bytes / 1e12).toFixed(1)} Tbps`;
+    if (bytes >= 1e9) return `${(bytes / 1e9).toFixed(1)} Gbps`;
+    if (bytes >= 1e6) return `${(bytes / 1e6).toFixed(1)} Mbps`;
+    if (bytes >= 1e3) return `${(bytes / 1e3).toFixed(0)} Kbps`;
+    return `${Math.round(bytes)} bps`;
 }
 
 function Telemetry({ label, value, sparkColor, sparkPoints, valueColor }: { label: string; value: string; sparkColor: string; sparkPoints: string; valueColor?: string }) {

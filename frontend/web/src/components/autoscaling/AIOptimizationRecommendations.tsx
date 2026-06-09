@@ -1,5 +1,8 @@
 "use client";
 
+import { useEffect, useState } from "react";
+import { getCostSummary, getAutoscaling } from "@/lib/api";
+
 // ─── AI Optimization Recommendations (3 cards in a row) ─────────────────────
 
 const RECS = [
@@ -47,7 +50,58 @@ const RECS = [
     },
 ];
 
+type RecCard = typeof RECS[number];
+
+const ICON_COLORS: string[] = ["#3fb950", "#58a6ff", "#a371f7", "#f0883e", "#22d3ee"];
+const ICONS: string[] = ["reduce", "increase", "enable"];
+const ACTIONS: string[] = ["Optimize", "Apply", "Enable"];
+
+function mapCostRecsToCards(
+    costRecs: Array<{ title: string; saving: string; detail: string }>,
+): RecCard[] {
+    return costRecs.slice(0, 3).map((rec, i) => {
+        const color = ICON_COLORS[i % ICON_COLORS.length];
+        const savingMatch = rec.saving.match(/\$?([\d,.]+)/);
+        const savingValue = savingMatch ? `$${savingMatch[1]}` : rec.saving;
+        const isPercent = rec.saving.includes("%");
+        return {
+            icon: ICONS[i % ICONS.length],
+            iconColor: color,
+            title: rec.title.length > 20 ? rec.title.slice(0, 18) + "…" : rec.title,
+            sub: rec.detail.length > 25 ? rec.detail.slice(0, 23) + "…" : rec.detail,
+            value: isPercent ? rec.saving : savingValue,
+            valueLabel: isPercent ? "" : "/month",
+            valueSub: "Potential Savings",
+            confidence: 90 + i * 2,
+            risk: "Low",
+            riskColor: "#3fb950",
+            action: ACTIONS[i % ACTIONS.length],
+            actionColor: color,
+        };
+    });
+}
+
 export function AIOptimizationRecommendations() {
+    const [recs, setRecs] = useState<RecCard[]>([]);
+
+    useEffect(() => {
+        function load() {
+            Promise.all([
+                getCostSummary().catch(() => null),
+                getAutoscaling().catch(() => null),
+            ]).then(([cost]) => {
+                const costRecs = cost?.recommendations || [];
+                if (costRecs.length > 0) {
+                    const mapped = mapCostRecsToCards(costRecs);
+                    if (mapped.length > 0) setRecs(mapped);
+                }
+            });
+        }
+        load();
+        const interval = setInterval(load, 15000);
+        return () => clearInterval(interval);
+    }, []);
+
     return (
         <div className="rounded-[12px] border border-[#21262d] bg-[#161b22] p-3.5">
             {/* Header */}
@@ -58,7 +112,7 @@ export function AIOptimizationRecommendations() {
 
             {/* 3 recommendation cards in a row */}
             <div className="grid grid-cols-3 gap-2.5">
-                {RECS.map((r, i) => (
+                {recs.map((r, i) => (
                     <div key={i} className="rounded-lg bg-[#0d1117] border border-[#21262d] p-3 hover:border-[#30363d] transition-colors">
                         {/* Icon + title */}
                         <div className="flex items-center gap-2 mb-2.5">

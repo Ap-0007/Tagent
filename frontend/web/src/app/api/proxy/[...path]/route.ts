@@ -64,11 +64,13 @@ export async function PUT(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
     const url = buildUrl(request);
+    const body = await request.text();
 
     try {
         const res = await fetch(url, {
             method: "DELETE",
             headers: { "Content-Type": "application/json" },
+            body: body || undefined,
             cache: "no-store",
         });
         const data = await res.json();

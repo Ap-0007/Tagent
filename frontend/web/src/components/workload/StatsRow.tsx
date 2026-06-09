@@ -1,8 +1,37 @@
 "use client";
 
+import { useEffect, useState } from "react";
+import { getClusterSummary, getPods, type ClusterSummary, type PodInfo } from "@/lib/api";
+
 // ─── Stat Cards Row (5 cards) ────────────────────────────────────────────────
 
 export function StatsRow() {
+    const [summary, setSummary] = useState<ClusterSummary | null>(null);
+    const [pods, setPods] = useState<PodInfo[]>([]);
+
+    useEffect(() => {
+        async function load() {
+            try {
+                const [s, p] = await Promise.all([
+                    getClusterSummary().catch(() => null),
+                    getPods().catch(() => []),
+                ]);
+                setSummary(s);
+                setPods(p || []);
+            } catch { }
+        }
+        load();
+        const interval = setInterval(load, 15000);
+        return () => clearInterval(interval);
+    }, []);
+
+    const runningPods = summary?.running_pods ?? 0;
+    const totalPods = summary?.total_pods ?? 0;
+    const pendingPods = pods.filter(p => p.status === "Pending").length;
+    const restartingPods = pods.filter(p => p.restarts > 3).length;
+    const failedPods = summary?.failed_pods ?? 0;
+    const healthScore = totalPods > 0 ? Math.round((runningPods / totalPods) * 100) : 0;
+
     return (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
             <StatCard
@@ -10,8 +39,8 @@ export function StatsRow() {
                 glowColor="rgba(63, 185, 80, 0.18)"
                 label="Running Pods"
                 showPlus
-                value="1,274"
-                trend="↗ 18 (1.4%) vs 15m ago"
+                value={runningPods.toLocaleString()}
+                trend={`${totalPods} total pods in cluster`}
                 hexIcon={<CubeIcon color="#3fb950" />}
                 sparkline={
                     <Sparkline
@@ -25,8 +54,8 @@ export function StatsRow() {
                 color="#f0883e"
                 glowColor="rgba(240, 136, 62, 0.18)"
                 label="Pending Pods"
-                value="36"
-                trend="↗ 6 vs 15m ago"
+                value={String(pendingPods)}
+                trend={pendingPods > 0 ? `${pendingPods} awaiting scheduling` : "All pods scheduled"}
                 hexIcon={<ClockIcon color="#f0883e" />}
                 sparkline={
                     <Sparkline
@@ -40,8 +69,8 @@ export function StatsRow() {
                 color="#f85149"
                 glowColor="rgba(248, 81, 73, 0.20)"
                 label="Restarting Pods"
-                value="28"
-                trend="↗ 5 vs 15m ago"
+                value={String(restartingPods)}
+                trend={restartingPods > 0 ? `${restartingPods} pods with >3 restarts` : "No excessive restarts"}
                 hexIcon={<RefreshIcon color="#f85149" />}
                 sparkline={
                     <Sparkline
@@ -54,14 +83,14 @@ export function StatsRow() {
             <StatCard
                 color="#a371f7"
                 glowColor="rgba(163, 113, 247, 0.18)"
-                label="Terminated Pods"
-                value="12"
-                trend="↘ 3 vs 15m ago"
+                label="Failed Pods"
+                value={String(failedPods)}
+                trend={failedPods > 0 ? `${failedPods} pods in failed state` : "No failed pods"}
                 hexIcon={<XIcon color="#a371f7" />}
                 sparkline={<BarSparkline color="#a371f7" />}
             />
 
-            <HealthScoreCard />
+            <HealthScoreCard score={healthScore} />
         </div>
     );
 }
@@ -126,8 +155,7 @@ function StatCard({ color, glowColor, label, showPlus, value, trend, hexIcon, sp
 
 // ─── Health Score Card (5th, with donut) ─────────────────────────────────────
 
-function HealthScoreCard() {
-    const score = 92;
+function HealthScoreCard({ score }: { score: number }) {
     const r = 30;
     const circumference = 2 * Math.PI * r;
     const offset = circumference - (score / 100) * circumference;
@@ -155,10 +183,10 @@ function HealthScoreCard() {
                     <div className="mt-2">
                         <span
                             className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold"
-                            style={{ background: "rgba(63,185,80,0.15)", color: "#3fb950" }}
+                            style={{ background: score >= 80 ? "rgba(63,185,80,0.15)" : score >= 50 ? "rgba(240,136,62,0.15)" : "rgba(248,81,73,0.15)", color: score >= 80 ? "#3fb950" : score >= 50 ? "#f0883e" : "#f85149" }}
                         >
-                            <span className="w-1.5 h-1.5 rounded-full" style={{ background: "#3fb950", boxShadow: "0 0 4px #3fb950" }} />
-                            Excellent
+                            <span className="w-1.5 h-1.5 rounded-full" style={{ background: score >= 80 ? "#3fb950" : score >= 50 ? "#f0883e" : "#f85149", boxShadow: `0 0 4px ${score >= 80 ? "#3fb950" : score >= 50 ? "#f0883e" : "#f85149"}` }} />
+                            {score >= 80 ? "Excellent" : score >= 50 ? "Degraded" : "Critical"}
                         </span>
                     </div>
                 </div>

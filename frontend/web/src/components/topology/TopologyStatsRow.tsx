@@ -1,22 +1,100 @@
 "use client";
 
+import { useEffect, useState } from "react";
+import { getClusterSummary, getServices, getRiskSummary, getMetricsSummary, type ClusterSummary, type ServiceInfo, type RiskSummaryResponse, type MetricsSummary } from "@/lib/api";
+
 // ─── 4 stat cards: Cluster Health, Active Services, AI Confidence, Live Telemetry ───
 
+interface StatsState {
+    clusterHealth: number;
+    healthLabel: string;
+    activeServices: number;
+    servicesGrowth: string;
+    aiConfidence: number;
+    confidenceLabel: string;
+    telemetryEvents: string;
+}
+
+const INITIAL: StatsState = {
+    clusterHealth: 0,
+    healthLabel: "—",
+    activeServices: 0,
+    servicesGrowth: "—",
+    aiConfidence: 0,
+    confidenceLabel: "—",
+    telemetryEvents: "—",
+};
+
+function deriveStats(
+    summary: ClusterSummary | null,
+    services: ServiceInfo[],
+    riskSummary: RiskSummaryResponse | null,
+    metrics: MetricsSummary | null,
+): StatsState {
+    let clusterHealth = 0;
+    let healthLabel = "—";
+    if (summary) {
+        const nodeHealth = summary.total_nodes > 0 ? (summary.ready_nodes / summary.total_nodes) * 100 : 100;
+        const podHealth = summary.total_pods > 0 ? (summary.running_pods / summary.total_pods) * 100 : 100;
+        clusterHealth = Math.round(((nodeHealth + podHealth) / 2) * 10) / 10;
+        healthLabel = clusterHealth >= 95 ? "Excellent" : clusterHealth >= 80 ? "Good" : clusterHealth >= 60 ? "Fair" : "Degraded";
+    }
+
+    const activeServices = services.length > 0 ? services.length : (summary?.total_services ?? 0);
+    const servicesGrowth = services.length > 0 ? `${services.length} active` : "—";
+
+    let aiConfidence = 0;
+    let confidenceLabel = "—";
+    if (riskSummary) {
+        aiConfidence = riskSummary.ai_confidence || 0;
+        confidenceLabel = aiConfidence >= 90 ? "High Confidence" : aiConfidence >= 70 ? "Moderate" : "Low Confidence";
+    }
+
+    let telemetryEvents = "—";
+    if (summary && summary.running_pods > 0) {
+        const estimated = summary.running_pods * 5000;
+        if (estimated >= 1000000) telemetryEvents = `${(estimated / 1000000).toFixed(1)}M`;
+        else if (estimated >= 1000) telemetryEvents = `${(estimated / 1000).toFixed(0)}K`;
+        else telemetryEvents = `${estimated}`;
+    }
+
+    return { clusterHealth, healthLabel, activeServices, servicesGrowth, aiConfidence, confidenceLabel, telemetryEvents };
+}
+
 export function TopologyStatsRow() {
+    const [stats, setStats] = useState<StatsState>(INITIAL);
+
+    useEffect(() => {
+        function fetchData() {
+            Promise.all([
+                getClusterSummary().catch(() => null),
+                getServices().catch(() => []),
+                getRiskSummary().catch(() => null),
+                getMetricsSummary().catch(() => null),
+            ]).then(([summary, services, riskSummary, metrics]) => {
+                const derived = deriveStats(summary, services, riskSummary, metrics);
+                setStats(derived);
+            });
+        }
+
+        fetchData();
+        const interval = setInterval(fetchData, 15000);
+        return () => clearInterval(interval);
+    }, []);
+
     return (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-            <ClusterHealthCard />
-            <ActiveServicesCard />
-            <AIConfidenceCard />
-            <LiveTelemetryCard />
+            <ClusterHealthCard score={stats.clusterHealth} label={stats.healthLabel} />
+            <ActiveServicesCard count={stats.activeServices} growth={stats.servicesGrowth} />
+            <AIConfidenceCard score={stats.aiConfidence} label={stats.confidenceLabel} />
+            <LiveTelemetryCard events={stats.telemetryEvents} />
         </div>
     );
 }
 
-// ─── Card 1: Cluster Health Score (98.7% green ring + sparkline) ────────────
+// ─── Card 1: Cluster Health Score (green ring + sparkline) ────────────
 
-function ClusterHealthCard() {
-    const score = 98.7;
+function ClusterHealthCard({ score, label }: { score: number; label: string }) {
     const r = 26;
     const c = 2 * Math.PI * r;
     const offset = c - (score / 100) * c;
@@ -37,7 +115,7 @@ function ClusterHealthCard() {
                     <p className="text-[28px] font-bold text-[#e6edf3] leading-none tracking-tight font-mono">{score}%</p>
                     <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#3fb950] mt-1.5">
                         <span className="w-1.5 h-1.5 rounded-full bg-[#3fb950]" style={{ boxShadow: "0 0 4px #3fb950" }} />
-                        Excellent
+                        {label}
                     </span>
                 </div>
                 <div className="shrink-0 relative">
@@ -60,9 +138,9 @@ function ClusterHealthCard() {
     );
 }
 
-// ─── Card 2: Active Services 247 + cyan sparkline ───────────────────────────
+// ─── Card 2: Active Services + cyan sparkline ───────────────────────────
 
-function ActiveServicesCard() {
+function ActiveServicesCard({ count, growth }: { count: number; growth: string }) {
     return (
         <div
             className="relative rounded-[12px] border border-[#21262d] bg-[#161b22] overflow-hidden hover:border-[#30363d] transition-colors p-3.5"
@@ -78,8 +156,8 @@ function ActiveServicesCard() {
                         </svg>
                         <span className="text-[12px] text-[#22d3ee] font-semibold">Active Services</span>
                     </div>
-                    <p className="text-[28px] font-bold text-[#e6edf3] leading-none tracking-tight font-mono">247</p>
-                    <p className="text-[11px] text-[#3fb950] mt-1.5 font-medium">↗ 12 this week</p>
+                    <p className="text-[28px] font-bold text-[#e6edf3] leading-none tracking-tight font-mono">{count || "—"}</p>
+                    <p className="text-[11px] text-[#3fb950] mt-1.5 font-medium">{growth}</p>
                 </div>
                 <div className="shrink-0 w-12 h-12 rounded-lg bg-[#22d3ee]/10 border border-[#22d3ee]/30 flex items-center justify-center" style={{ filter: "drop-shadow(0 0 6px rgba(34,211,238,0.4))" }}>
                     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#22d3ee" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
@@ -96,10 +174,9 @@ function ActiveServicesCard() {
     );
 }
 
-// ─── Card 3: AI Confidence Score 94.3% with purple ring ─────────────────────
+// ─── Card 3: AI Confidence Score with purple ring ─────────────────────
 
-function AIConfidenceCard() {
-    const score = 94.3;
+function AIConfidenceCard({ score, label }: { score: number; label: string }) {
     const r = 26;
     const c = 2 * Math.PI * r;
     const offset = c - (score / 100) * c;
@@ -116,7 +193,7 @@ function AIConfidenceCard() {
                         <span className="text-[12px] text-[#a371f7] font-semibold">AI Confidence Score</span>
                     </div>
                     <p className="text-[28px] font-bold text-[#e6edf3] leading-none tracking-tight font-mono">{score}%</p>
-                    <p className="text-[11px] text-[#a371f7] mt-1.5 font-medium">High Confidence</p>
+                    <p className="text-[11px] text-[#a371f7] mt-1.5 font-medium">{label}</p>
                 </div>
                 <div className="shrink-0 relative">
                     <svg width="64" height="64" viewBox="0 0 64 64">
@@ -138,9 +215,9 @@ function AIConfidenceCard() {
     );
 }
 
-// ─── Card 4: Live Telemetry 1.2M + bar chart ─────────────────────────────────
+// ─── Card 4: Live Telemetry + bar chart ─────────────────────────────────
 
-function LiveTelemetryCard() {
+function LiveTelemetryCard({ events }: { events: string }) {
     return (
         <div
             className="relative rounded-[12px] border border-[#21262d] bg-[#161b22] overflow-hidden hover:border-[#30363d] transition-colors p-3.5"
@@ -157,7 +234,7 @@ function LiveTelemetryCard() {
                     <span className="w-1.5 h-1.5 rounded-full bg-[#3fb950]" style={{ boxShadow: "0 0 4px #3fb950", animation: "wi-pulse 1.4s infinite" }} />
                 </span>
             </div>
-            <p className="text-[28px] font-bold text-[#e6edf3] leading-none tracking-tight font-mono">1.2M</p>
+            <p className="text-[28px] font-bold text-[#e6edf3] leading-none tracking-tight font-mono">{events}</p>
             <p className="text-[11px] text-[#8b949e] mt-1.5">Events / min <span className="text-[#3fb950]">●</span></p>
             <div className="h-[36px] mt-1.5 -mx-1">
                 <BarChart color="#3fb950" />

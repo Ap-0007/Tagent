@@ -74,8 +74,8 @@ export function TopologyGraph({ clusterState }: TopologyGraphProps) {
                             key={mode}
                             onClick={() => setViewMode(mode)}
                             className={`px-3 py-1 rounded-md text-2xs font-medium transition-all ${viewMode === mode
-                                    ? "bg-blue-500/20 text-blue-300 border border-blue-500/30"
-                                    : "text-slate-500 hover:text-slate-300"
+                                ? "bg-blue-500/20 text-blue-300 border border-blue-500/30"
+                                : "text-slate-500 hover:text-slate-300"
                                 }`}
                         >
                             {mode.charAt(0).toUpperCase() + mode.slice(1)}
@@ -340,13 +340,13 @@ export function TopologyGraph({ clusterState }: TopologyGraphProps) {
             {/* Bottom telemetry bar */}
             <div className="absolute bottom-4 left-5 right-5 flex items-center justify-between">
                 <div className="flex items-center gap-6 text-2xs font-mono">
-                    <span className="text-slate-500">Traffic <span className="text-slate-200 font-medium">2.4 Tbps</span></span>
+                    <span className="text-slate-500">Traffic <span className="text-slate-200 font-medium">—</span></span>
                     <MiniSparkSvg color="#10b981" />
-                    <span className="text-slate-500">Requests <span className="text-slate-200 font-medium">45.2K/s</span></span>
+                    <span className="text-slate-500">Requests <span className="text-slate-200 font-medium">—</span></span>
                     <MiniSparkSvg color="#3b82f6" />
-                    <span className="text-red-400 font-medium">Errors <span>12/s</span></span>
+                    <span className="text-red-400 font-medium">Errors <span>—</span></span>
                     <MiniSparkSvg color="#ef4444" />
-                    <span className="text-slate-500">P95 Latency <span className="text-amber-400 font-medium">234ms</span></span>
+                    <span className="text-slate-500">P95 Latency <span className="text-amber-400 font-medium">—</span></span>
                     <MiniSparkSvg color="#f59e0b" />
                 </div>
             </div>

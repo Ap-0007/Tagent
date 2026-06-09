@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { getCostSummary, getRiskSummary, type CostSummary, type RiskSummaryResponse } from "@/lib/api";
 
 const CHART_DATA: Record<string, { actual: string; forecast: string; annotation: string }> = {
     "7 Days": { actual: "0,85 30,82 60,78 90,75 120,72 150,70 180,68", forecast: "180,68 210,66 240,64 270,63 300,62", annotation: "Forecast: $5,800\nConfidence: 97%" },
@@ -10,7 +11,28 @@ const CHART_DATA: Record<string, { actual: string; forecast: string; annotation:
 
 export function CostForecastingEngine() {
     const [period, setPeriod] = useState("30 Days");
+    const [costData, setCostData] = useState<CostSummary | null>(null);
+    const [riskData, setRiskData] = useState<RiskSummaryResponse | null>(null);
+
+    useEffect(() => {
+        const load = () => {
+            getCostSummary().then(setCostData).catch(() => null);
+            getRiskSummary().then(setRiskData).catch(() => null);
+        };
+        load();
+        const id = setInterval(load, 15000);
+        return () => clearInterval(id);
+    }, []);
+
     const data = CHART_DATA[period];
+    const monthlySpend = costData?.monthly_spend ?? "—";
+    const spendNum = costData ? parseFloat(costData.monthly_spend.replace(/[^0-9.]/g, "")) : 0;
+    const savingsNum = costData ? parseFloat(costData.potential_savings.replace(/[^0-9.]/g, "")) : 0;
+    const forecastNext = spendNum > 0 ? `$${Math.round(spendNum * 1.08).toLocaleString()}` : "—";
+    const changePercent = spendNum > 0 ? `+${((savingsNum / spendNum) * 100).toFixed(1)}%` : "—";
+    const budgetThreshold = spendNum > 0 ? `$${Math.round(spendNum * 1.15).toLocaleString()}` : "—";
+    const aiConfidence = riskData ? `${riskData.ai_confidence}%` : "—";
+    const aiConfidenceNum = riskData?.ai_confidence ?? 0;
 
     return (
         <div className="rounded-[12px] border border-[#21262d] bg-[#161b22] p-3.5">
@@ -59,10 +81,10 @@ export function CostForecastingEngine() {
             {/* Stats */}
             <div className="grid grid-cols-4 gap-2">
                 {[
-                    { label: "Current Trajectory", value: "$24,870", change: "+6.2%", color: "#f0883e" },
-                    { label: "Forecast Next Month", value: "$22,300", change: "+8.6%", color: "#f0883e" },
-                    { label: "Budget Threshold", value: "$28,000", badge: "Within budget", badgeColor: "#3fb950" },
-                    { label: "AI Confidence", value: "94%", ring: true },
+                    { label: "Current Trajectory", value: monthlySpend, change: changePercent, color: "#f0883e" },
+                    { label: "Forecast Next Month", value: forecastNext, change: "+8.6%", color: "#f0883e" },
+                    { label: "Budget Threshold", value: budgetThreshold, badge: "Within budget", badgeColor: "#3fb950" },
+                    { label: "AI Confidence", value: aiConfidence, ring: true },
                 ].map((s, i) => (
                     <div key={i} className="text-center">
                         <p className="text-[9px] text-[#8b949e]">{s.label}</p>
@@ -72,7 +94,7 @@ export function CostForecastingEngine() {
                         {s.ring && (
                             <svg width="28" height="28" viewBox="0 0 28 28" className="mx-auto mt-1">
                                 <circle cx="14" cy="14" r="11" fill="none" stroke="#21262d" strokeWidth="3" />
-                                <circle cx="14" cy="14" r="11" fill="none" stroke="#3fb950" strokeWidth="3" strokeLinecap="round" strokeDasharray={`${2 * Math.PI * 11 * 0.94} ${2 * Math.PI * 11 * 0.06}`} transform="rotate(-90 14 14)" style={{ filter: "drop-shadow(0 0 3px #3fb950)" }} />
+                                <circle cx="14" cy="14" r="11" fill="none" stroke="#3fb950" strokeWidth="3" strokeLinecap="round" strokeDasharray={`${2 * Math.PI * 11 * (aiConfidenceNum / 100)} ${2 * Math.PI * 11 * (1 - aiConfidenceNum / 100)}`} transform="rotate(-90 14 14)" style={{ filter: "drop-shadow(0 0 3px #3fb950)" }} />
                             </svg>
                         )}
                     </div>

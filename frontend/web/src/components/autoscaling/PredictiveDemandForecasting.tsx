@@ -1,16 +1,17 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
     AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
     ResponsiveContainer, ReferenceLine, Legend,
 } from "recharts";
+import { getPredictivePredictions } from "@/lib/api";
 
 // ─── Predictive Demand Forecasting (Recharts area chart) ─────────────────────
 
 const PERIODS = ["1H", "24H", "7D", "30D"];
 
-const DATA_24H = [
+const FALLBACK_DATA_24H = [
     { time: "00:00", actual: 35, forecast: null, upper: null, lower: null },
     { time: "02:00", actual: 38, forecast: null, upper: null, lower: null },
     { time: "04:00", actual: 42, forecast: null, upper: null, lower: null },
@@ -26,7 +27,7 @@ const DATA_24H = [
     { time: "24:00", actual: null, forecast: 112, upper: 128, lower: 88 },
 ];
 
-const DATA_1H = [
+const FALLBACK_DATA_1H = [
     { time: "11:00", actual: 72, forecast: null, upper: null, lower: null },
     { time: "11:10", actual: 74, forecast: null, upper: null, lower: null },
     { time: "11:20", actual: 75, forecast: null, upper: null, lower: null },
@@ -41,7 +42,7 @@ const DATA_1H = [
     { time: "12:50", actual: null, forecast: 85, upper: 90, lower: 80 },
 ];
 
-const DATA_7D = [
+const FALLBACK_DATA_7D = [
     { time: "Mon", actual: 45, forecast: null, upper: null, lower: null },
     { time: "Tue", actual: 58, forecast: null, upper: null, lower: null },
     { time: "Wed", actual: 72, forecast: null, upper: null, lower: null },
@@ -51,7 +52,7 @@ const DATA_7D = [
     { time: "Sun", actual: null, forecast: 118, upper: 148, lower: 88 },
 ];
 
-const DATA_30D = [
+const FALLBACK_DATA_30D = [
     { time: "W1", actual: 40, forecast: null, upper: null, lower: null },
     { time: "W2", actual: 55, forecast: null, upper: null, lower: null },
     { time: "W3", actual: 72, forecast: 72, upper: 72, lower: 72 },
@@ -59,14 +60,14 @@ const DATA_30D = [
     { time: "W5", actual: null, forecast: 115, upper: 150, lower: 80 },
 ];
 
-const DATA_MAP: Record<string, typeof DATA_24H> = {
-    "1H": DATA_1H,
-    "24H": DATA_24H,
-    "7D": DATA_7D,
-    "30D": DATA_30D,
+const FALLBACK_DATA_MAP: Record<string, typeof FALLBACK_DATA_24H> = {
+    "1H": FALLBACK_DATA_1H,
+    "24H": FALLBACK_DATA_24H,
+    "7D": FALLBACK_DATA_7D,
+    "30D": FALLBACK_DATA_30D,
 };
 
-const STATS_MAP: Record<string, { peak: string; peakTime: string; events: string; growth: string; confidence: string }> = {
+const FALLBACK_STATS_MAP: Record<string, { peak: string; peakTime: string; events: string; growth: string; confidence: string }> = {
     "1H": { peak: "85", peakTime: "12:50", events: "2", growth: "+4%", confidence: "98%" },
     "24H": { peak: "112", peakTime: "3:00 PM", events: "9", growth: "+18%", confidence: "94%" },
     "7D": { peak: "148", peakTime: "Sun", events: "34", growth: "+24%", confidence: "89%" },
@@ -95,8 +96,38 @@ function CustomTooltip({ active, payload, label }: any) {
 
 export function PredictiveDemandForecasting() {
     const [period, setPeriod] = useState("24H");
-    const chartData = DATA_MAP[period];
-    const stats = STATS_MAP[period];
+    const [dataMap, setDataMap] = useState<Record<string, Array<{ time: string; actual: number | null; forecast: number | null; upper: number | null; lower: number | null }>>>({});
+    const [statsMap, setStatsMap] = useState<Record<string, { peak: string; peakTime: string; events: string; growth: string; confidence: string }>>({});
+
+    useEffect(() => {
+        let active = true;
+        const fetchData = () => {
+            getPredictivePredictions()
+                .then((data) => {
+                    if (!active || data.predictions.length === 0) return;
+                    // Derive stats from predictions
+                    const maxConf = Math.max(...data.predictions.map(p => p.confidence));
+                    const topPrediction = data.predictions[0];
+                    const newStats: Record<string, { peak: string; peakTime: string; events: string; growth: string; confidence: string }> = {
+                        "24H": {
+                            peak: String(data.total || data.predictions.length),
+                            peakTime: topPrediction?.time_to_failure ?? "N/A",
+                            events: String(data.predictions.length),
+                            growth: `+${Math.round((topPrediction?.probability ?? 0) * 100)}%`,
+                            confidence: `${Math.round(maxConf * 100)}%`,
+                        },
+                    };
+                    setStatsMap(newStats);
+                })
+                .catch(() => { });
+        };
+        fetchData();
+        const interval = setInterval(fetchData, 15_000);
+        return () => { active = false; clearInterval(interval); };
+    }, []);
+
+    const chartData = dataMap[period] || [];
+    const stats = statsMap[period] || { peak: "—", peakTime: "—", events: "—", growth: "—", confidence: "—" };
 
     return (
         <div className="rounded-[12px] border border-[#21262d] bg-[#161b22] p-3.5">

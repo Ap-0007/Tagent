@@ -24,6 +24,66 @@ updates:
     labels:
       - "dependencies"
 
+  - package-ecosystem: "gomod"
+    directory: "/backend/services/discovery"
+    schedule:
+      interval: "monthly"
+    open-pull-requests-limit: 1
+    rebase-strategy: "disabled"
+    groups:
+      all-go:
+        patterns: ["*"]
+    labels:
+      - "dependencies"
+
+  - package-ecosystem: "gomod"
+    directory: "/backend/services/monitoring"
+    schedule:
+      interval: "monthly"
+    open-pull-requests-limit: 1
+    rebase-strategy: "disabled"
+    groups:
+      all-go:
+        patterns: ["*"]
+    labels:
+      - "dependencies"
+
+  - package-ecosystem: "gomod"
+    directory: "/backend/services/remediation"
+    schedule:
+      interval: "monthly"
+    open-pull-requests-limit: 1
+    rebase-strategy: "disabled"
+    groups:
+      all-go:
+        patterns: ["*"]
+    labels:
+      - "dependencies"
+
+  - package-ecosystem: "gomod"
+    directory: "/backend/services/notification"
+    schedule:
+      interval: "monthly"
+    open-pull-requests-limit: 1
+    rebase-strategy: "disabled"
+    groups:
+      all-go:
+        patterns: ["*"]
+    labels:
+      - "dependencies"
+
+  - package-ecosystem: "gomod"
+    directory: "/cli"
+    schedule:
+      interval: "monthly"
+    open-pull-requests-limit: 1
+    rebase-strategy: "disabled"
+    groups:
+      all-go:
+        patterns: ["*"]
+    labels:
+      - "dependencies"
+
   - package-ecosystem: "pip"
     directory: "/backend/services/ai-engine"
     schedule:
@@ -33,6 +93,15 @@ updates:
     groups:
       all-python:
         patterns: ["*"]
+    labels:
+      - "dependencies"
+
+  - package-ecosystem: "docker"
+    directory: "/deployment/docker"
+    schedule:
+      interval: "monthly"
+    open-pull-requests-limit: 1
+    rebase-strategy: "disabled"
     labels:
       - "dependencies"
 

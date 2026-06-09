@@ -1,14 +1,61 @@
 "use client";
 
-const ACTIVITIES = [
-    { action: "Deployment completed", desc: "tagent-monitoring successfully deployed v1.9.3", time: "1m ago", color: "#3fb950" },
-    { action: "Replica healthy", desc: "All replicas ready for tagent-api-gateway", time: "2m ago", color: "#3fb950" },
-    { action: "Readiness probe failure", desc: "Ollama pod readiness probe failed", time: "3m ago", color: "#f85149" },
-    { action: "Scaling action executed", desc: "Scaled tagent-notification from 2 to 3 replicas", time: "4m ago", color: "#f0883e" },
-    { action: "Recovery successful", desc: "Ollama deployment recovering...", time: "5m ago", color: "#3fb950" },
-];
+import { useEffect, useState } from "react";
+import { getRecentEvents, StreamEvent } from "@/lib/api";
+
+interface Activity {
+    action: string;
+    desc: string;
+    time: string;
+    color: string;
+}
+
+function formatRelativeTime(timestamp: string): string {
+    const now = Date.now();
+    const then = new Date(timestamp).getTime();
+    const diffMs = now - then;
+    const diffSec = Math.floor(diffMs / 1000);
+    if (diffSec < 60) return `${diffSec}s ago`;
+    const diffMin = Math.floor(diffSec / 60);
+    if (diffMin < 60) return `${diffMin}m ago`;
+    const diffHr = Math.floor(diffMin / 60);
+    if (diffHr < 24) return `${diffHr}h ago`;
+    const diffDay = Math.floor(diffHr / 24);
+    return `${diffDay}d ago`;
+}
+
+function severityToColor(severity: string): string {
+    const s = severity.toLowerCase();
+    if (s === "critical" || s === "error") return "#f85149";
+    if (s === "warning") return "#f0883e";
+    return "#3fb950";
+}
+
+function mapEventToActivity(event: StreamEvent): Activity {
+    return {
+        action: event.title,
+        desc: event.detail,
+        time: formatRelativeTime(event.timestamp),
+        color: severityToColor(event.severity),
+    };
+}
 
 export function LiveActivityFeed() {
+    const [activities, setActivities] = useState<Activity[] | null>(null);
+
+    useEffect(() => {
+        function fetchData() {
+            getRecentEvents()
+                .then((data) => setActivities(data.events.map(mapEventToActivity)))
+                .catch(() => setActivities([]));
+        }
+        fetchData();
+        const interval = setInterval(fetchData, 15000);
+        return () => clearInterval(interval);
+    }, []);
+
+    const items = activities ?? [];
+
     return (
         <div className="rounded-[12px] border border-[#21262d] bg-[#161b22] p-3.5">
             <div className="flex items-center justify-between mb-3">
@@ -23,7 +70,17 @@ export function LiveActivityFeed() {
             </div>
 
             <div className="space-y-2">
-                {ACTIVITIES.map((a, i) => (
+                {activities === null && (
+                    <div className="py-4 text-center">
+                        <p className="text-[11px] text-[#8b949e]">—</p>
+                    </div>
+                )}
+                {activities !== null && items.length === 0 && (
+                    <div className="py-4 text-center">
+                        <p className="text-[11px] text-[#8b949e]">No recent activity</p>
+                    </div>
+                )}
+                {items.map((a, i) => (
                     <div key={i} className="flex items-start gap-2 py-1.5 border-b border-[#21262d] last:border-0">
                         <span className="w-1.5 h-1.5 rounded-full mt-1.5 shrink-0" style={{ background: a.color, boxShadow: `0 0 3px ${a.color}` }} />
                         <div className="flex-1 min-w-0">

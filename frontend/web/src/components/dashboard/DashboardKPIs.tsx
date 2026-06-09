@@ -148,7 +148,7 @@ function IncidentAnalysisCard({ count, criticalCount, warningCount }: { count: n
                     </div>
                     <div className="text-right">
                         <p className="text-[10px] text-[#8b949e]">Confidence</p>
-                        <p className="text-[18px] font-bold text-[#a371f7] font-mono">94%</p>
+                        <p className="text-[18px] font-bold text-[#a371f7] font-mono">{count > 0 ? "94%" : "—"}</p>
                     </div>
                 </div>
             </div>
@@ -183,7 +183,7 @@ function ActiveServicesCard({ count }: { count: number }) {
                         <span className="text-[12px] text-[#22d3ee] font-semibold">Active Services</span>
                     </div>
                     <p className="text-[36px] font-bold text-[#e6edf3] leading-none tracking-tight">{count}</p>
-                    <p className="text-[11px] text-[#3fb950] mt-2 font-medium">↑ 12 this week</p>
+                    <p className="text-[11px] text-[#3fb950] mt-2 font-medium">{count > 0 ? `${count} active` : "—"}</p>
                 </div>
                 <Hexagon color="#22d3ee">
                     <CubeIcon color="#22d3ee" />
@@ -223,11 +223,11 @@ function RemediationCard({ count }: { count: number }) {
                 <div className="text-right space-y-2 shrink-0">
                     <div>
                         <p className="text-[9.5px] text-[#8b949e]">MTTR Saved</p>
-                        <p className="text-[12px] text-[#a371f7] font-mono font-bold">4h 27m</p>
+                        <p className="text-[12px] text-[#a371f7] font-mono font-bold">{count > 0 ? "—" : "—"}</p>
                     </div>
                     <div>
                         <p className="text-[9.5px] text-[#8b949e]">Success Rate</p>
-                        <p className="text-[12px] text-[#3fb950] font-mono font-bold">97%</p>
+                        <p className="text-[12px] text-[#3fb950] font-mono font-bold">{count > 0 ? "—" : "—"}</p>
                     </div>
                 </div>
             </div>

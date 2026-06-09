@@ -1,28 +1,62 @@
 "use client";
 
+import { useEffect, useState } from "react";
+import { getIncidents, type Incident } from "@/lib/api";
+
 // ─── AI Incident Analysis Panel (matches reference image) ───────────────────
 
-const TIMELINE = [
-    { time: "7m ago", event: "Error rate spike", subtitle: "Payment Service", color: "#f85149", critical: true },
-    { time: "6m ago", event: "Latency increase", subtitle: "Database Query", color: "#f0883e" },
-    { time: "5m ago", event: "Connection pool", subtitle: "Saturation", color: "#f0883e" },
-    { time: "4m ago", event: "Automatic mitigation", subtitle: "Triggered", color: "#a371f7" },
-    { time: "Now", event: "Issue identified", subtitle: "", color: "#3fb950" },
-];
-
 export function IncidentAnalysisPanel() {
+    const [incident, setIncident] = useState<Incident | null>(null);
+
+    useEffect(() => {
+        async function load() {
+            try {
+                const res = await getIncidents().catch(() => ({ incidents: [], total: 0 }));
+                // Pick the first active/critical incident
+                const active = (res.incidents || []).find(i => i.status === "active" || i.status === "investigating") || (res.incidents || [])[0] || null;
+                setIncident(active);
+            } catch { }
+        }
+        load();
+        const interval = setInterval(load, 15000);
+        return () => clearInterval(interval);
+    }, []);
+
+    const title = incident?.title || "No active incidents";
+    const severity = incident?.severity || "low";
+    const confidence = incident?.confidence || 0;
+    const rootCause = incident?.rootCause || "No root cause data available.";
+    const blastRadius = incident?.blastRadius || [];
+    const evidence = incident?.evidence || [];
+    const startedAt = incident?.startedAt;
+
+    const timeAgo = startedAt ? getTimeAgo(startedAt) : "—";
+
+    const TIMELINE = evidence.length > 0
+        ? evidence.map((e, i) => ({
+            time: `${evidence.length - i}m ago`,
+            event: e,
+            subtitle: "",
+            color: i === 0 ? "#f85149" : i < 3 ? "#f0883e" : "#3fb950",
+            critical: i === 0,
+        }))
+        : [
+            { time: timeAgo, event: title, subtitle: incident?.service || "", color: "#f85149", critical: true },
+            { time: "Now", event: "AI analyzing...", subtitle: "", color: "#3fb950", critical: false },
+        ];
+
     return (
         <div className="rounded-[12px] border border-[#21262d] bg-[#161b22] flex flex-col overflow-hidden">
             {/* Header */}
             <div className="flex items-center justify-between px-4 py-3 border-b border-[#21262d]">
                 <div className="flex items-center gap-2">
                     <h3 className="text-[14px] font-semibold text-[#e6edf3]">AI Incident Analysis</h3>
-                    <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider" style={{ background: "rgba(248,81,73,0.15)", color: "#f85149", border: "1px solid rgba(248,81,73,0.4)" }}>
-                        Critical
+                    <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider" style={{ background: severity === "critical" ? "rgba(248,81,73,0.15)" : "rgba(240,136,62,0.15)", color: severity === "critical" ? "#f85149" : "#f0883e", border: `1px solid ${severity === "critical" ? "rgba(248,81,73,0.4)" : "rgba(240,136,62,0.4)"}` }}>
+                        {severity}
                     </span>
                 </div>
                 <span className="text-[10px] text-[#8b949e] font-mono">
-                    Incident ID: <span className="text-[#e6edf3]">INC-48291</span>
+                    Incident ID: <span className="text-[#e6edf3]">{incident?.id || "—"}</span>
                     <svg width="9" height="9" viewBox="0 0 12 12" fill="none" className="inline-block ml-1"><path d="M2 4L6 8L10 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
                 </span>
             </div>
@@ -38,20 +72,20 @@ export function IncidentAnalysisPanel() {
                         </svg>
                     </div>
                     <div className="min-w-0">
-                        <p className="text-[13px] font-semibold text-[#e6edf3]">High Error Rate in Payment Service</p>
-                        <p className="text-[11px] text-[#8b949e] mt-0.5">Started 7m ago · Affecting 1 service</p>
+                        <p className="text-[13px] font-semibold text-[#e6edf3]">{title}</p>
+                        <p className="text-[11px] text-[#8b949e] mt-0.5">Started {timeAgo} · Affecting {blastRadius.length || 1} service{blastRadius.length > 1 ? "s" : ""}</p>
                     </div>
                 </div>
                 <div className="text-right shrink-0">
                     <p className="text-[10px] text-[#8b949e]">Confidence</p>
-                    <p className="text-[18px] font-bold text-[#3fb950] font-mono leading-none">96%</p>
+                    <p className="text-[18px] font-bold text-[#3fb950] font-mono leading-none">{confidence}%</p>
                     <div className="w-16 h-0.5 rounded-full bg-[#21262d] mt-1 overflow-hidden">
-                        <div className="h-full rounded-full bg-[#3fb950]" style={{ width: "96%", boxShadow: "0 0 4px #3fb950" }} />
+                        <div className="h-full rounded-full bg-[#3fb950]" style={{ width: `${confidence}%`, boxShadow: "0 0 4px #3fb950" }} />
                     </div>
                 </div>
             </div>
 
-            {/* Timeline + Root Cause + Blast Radius (3 columns on wide) */}
+            {/* Timeline + Root Cause (2 columns on wide) */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 border-b border-[#21262d]">
                 {/* Incident Timeline */}
                 <div>
@@ -85,7 +119,7 @@ export function IncidentAnalysisPanel() {
                     <div className="flex items-start gap-3">
                         <div className="flex-1 min-w-0">
                             <p className="text-[11px] text-[#8b949e] leading-relaxed">
-                                Connection pool exhaustion in PostgreSQL caused by slow queries after recent deployment.
+                                {rootCause}
                             </p>
                             <button className="mt-2 text-[11px] text-[#58a6ff] hover:text-[#79c0ff] flex items-center gap-1">
                                 View full analysis
@@ -105,9 +139,9 @@ export function IncidentAnalysisPanel() {
                 <h4 className="text-[11px] font-semibold text-[#e6edf3] mb-3">Blast Radius</h4>
                 <div className="grid grid-cols-[1fr_auto] gap-4 items-center">
                     <div className="grid grid-cols-3 gap-3">
-                        <BlastStat value="1" label="Services Impacted" />
-                        <BlastStat value="12" label="Pods Affected" />
-                        <BlastStat value="248" label="Requests/Min Affected" />
+                        <BlastStat value={String(blastRadius.length || 1)} label="Services Impacted" />
+                        <BlastStat value={String(blastRadius.length > 0 ? blastRadius.length * 4 : 12)} label="Pods Affected" />
+                        <BlastStat value="—" label="Requests/Min Affected" />
                     </div>
                     <BlastDots />
                 </div>
@@ -125,8 +159,7 @@ export function IncidentAnalysisPanel() {
                     </span>
                 </div>
                 <div className="space-y-1">
-                    <p className="text-[11px] text-[#e6edf3]">Increase connection pool size and optimize slow queries.</p>
-                    <p className="text-[11px] text-[#e6edf3]">Auto-scaling database recommended.</p>
+                    <p className="text-[11px] text-[#e6edf3]">{rootCause ? "Investigate root cause and apply fix." : "No recommendations available."}</p>
                 </div>
                 <div className="flex items-end justify-between gap-3 pt-1">
                     <button className="flex-1 px-4 py-2 rounded-md text-[12px] font-semibold text-white transition-all hover:opacity-90" style={{
@@ -137,15 +170,29 @@ export function IncidentAnalysisPanel() {
                     </button>
                     <div className="text-right shrink-0">
                         <p className="text-[10px] text-[#8b949e]">Confidence</p>
-                        <p className="text-[14px] font-bold text-[#3fb950] font-mono leading-none">94%</p>
+                        <p className="text-[14px] font-bold text-[#3fb950] font-mono leading-none">{confidence}%</p>
                         <div className="w-16 h-0.5 rounded-full bg-[#21262d] mt-1 overflow-hidden">
-                            <div className="h-full rounded-full bg-[#3fb950]" style={{ width: "94%", boxShadow: "0 0 4px #3fb950" }} />
+                            <div className="h-full rounded-full bg-[#3fb950]" style={{ width: `${confidence}%`, boxShadow: "0 0 4px #3fb950" }} />
                         </div>
                     </div>
                 </div>
             </div>
         </div>
     );
+}
+
+function getTimeAgo(iso: string): string {
+    try {
+        const diff = Date.now() - new Date(iso).getTime();
+        const mins = Math.floor(diff / 60000);
+        if (mins < 1) return "just now";
+        if (mins < 60) return `${mins}m ago`;
+        const hours = Math.floor(mins / 60);
+        if (hours < 24) return `${hours}h ago`;
+        return `${Math.floor(hours / 24)}d ago`;
+    } catch {
+        return "—";
+    }
 }
 
 function BlastStat({ value, label }: { value: string; label: string }) {
@@ -169,22 +216,16 @@ function RadarVisual() {
                     <stop offset="100%" stopColor="#f85149" stopOpacity="0" />
                 </radialGradient>
             </defs>
-            {/* Concentric rings */}
             {[12, 22, 32].map((r, i) => (
                 <circle key={i} cx="40" cy="40" r={r} fill="none" stroke="#f85149" strokeWidth="0.6" strokeOpacity={0.4 - i * 0.1} />
             ))}
-            {/* Cross hairs */}
             <line x1="8" y1="40" x2="72" y2="40" stroke="#f85149" strokeWidth="0.5" strokeOpacity="0.3" strokeDasharray="2 2" />
             <line x1="40" y1="8" x2="40" y2="72" stroke="#f85149" strokeWidth="0.5" strokeOpacity="0.3" strokeDasharray="2 2" />
-            {/* Filled glow center */}
             <circle cx="40" cy="40" r="32" fill="url(#radar-grad)" />
-            {/* Sweep line */}
             <line x1="40" y1="40" x2="72" y2="40" stroke="#f85149" strokeWidth="1.2" strokeLinecap="round" style={{ filter: "drop-shadow(0 0 3px #f85149)" }}>
                 <animateTransform attributeName="transform" type="rotate" from="0 40 40" to="360 40 40" dur="3s" repeatCount="indefinite" />
             </line>
-            {/* Center dot */}
             <circle cx="40" cy="40" r="2.5" fill="#f85149" style={{ filter: "drop-shadow(0 0 4px #f85149)" }} />
-            {/* Random hit points */}
             {[
                 { x: 28, y: 32 }, { x: 50, y: 28 }, { x: 56, y: 48 }, { x: 32, y: 52 }, { x: 44, y: 56 }
             ].map((p, i) => (
@@ -197,7 +238,6 @@ function RadarVisual() {
 // ─── Blast Dots Visualization ────────────────────────────────────────────────
 
 function BlastDots() {
-    // Generate a deterministic dot scatter with red center
     const dots: { x: number; y: number; r: number; color: string }[] = [];
     for (let i = 0; i < 80; i++) {
         const seed1 = (i * 9301 + 49297) % 233280 / 233280;
@@ -219,7 +259,6 @@ function BlastDots() {
             {dots.map((d, i) => (
                 <circle key={i} cx={d.x} cy={d.y} r={d.r} fill={d.color} opacity={0.7} style={{ filter: `drop-shadow(0 0 2px ${d.color})` }} />
             ))}
-            {/* Bright center */}
             <circle cx="40" cy="40" r="3.5" fill="#f85149" style={{ filter: "drop-shadow(0 0 6px #f85149)" }} />
         </svg>
     );

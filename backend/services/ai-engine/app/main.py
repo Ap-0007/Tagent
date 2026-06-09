@@ -17,6 +17,7 @@ from app.routers import predictive as predictive_router
 from app.routers import plugins as plugins_router
 from app.routers import reports as reports_router
 from app.routers import briefing as briefing_router
+from app.routers import models as models_router
 
 app = FastAPI(
     title="Tagent AI Engine",
@@ -80,6 +81,7 @@ app.include_router(predictive_router.router, prefix="/api/v1/predictive", tags=[
 app.include_router(plugins_router.router, prefix="/api/v1/plugins", tags=["plugins"])
 app.include_router(reports_router.router, prefix="/api/v1/reports", tags=["reports"])
 app.include_router(briefing_router.router, prefix="/api/v1/briefing", tags=["briefing"])
+app.include_router(models_router.router, prefix="/api/v1/models", tags=["models"])
 
 
 @app.get("/api/v1/cache/stats")

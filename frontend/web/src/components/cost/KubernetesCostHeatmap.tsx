@@ -1,45 +1,69 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { getCostSummary, type CostSummary } from "@/lib/api";
 
 const HEAT_COLORS = ["#161b22", "#0e4429", "#006d32", "#26a641", "#39d353"];
 
-const DATA: Record<string, { ns: string; cells: number[] }[]> = {
-    Namespaces: [
-        { ns: "production", cells: [4, 5, 3, 5, 4] },
-        { ns: "ai-engine", cells: [5, 4, 5, 3, 4] },
-        { ns: "monitoring", cells: [2, 3, 2, 3, 2] },
-        { ns: "platform", cells: [3, 2, 3, 2, 3] },
-        { ns: "staging", cells: [1, 2, 1, 2, 1] },
-        { ns: "development", cells: [1, 1, 1, 1, 1] },
-    ],
-    Deployments: [
-        { ns: "api-gateway", cells: [5, 4, 5, 4, 5] },
-        { ns: "ai-engine", cells: [4, 5, 4, 5, 4] },
-        { ns: "monitoring", cells: [3, 3, 3, 2, 3] },
-        { ns: "notification", cells: [2, 3, 2, 3, 2] },
-        { ns: "remediation", cells: [2, 2, 2, 2, 2] },
-        { ns: "ollama", cells: [1, 1, 2, 1, 1] },
-    ],
-    Services: [
-        { ns: "load-balancer", cells: [5, 5, 4, 5, 5] },
-        { ns: "api-svc", cells: [4, 4, 4, 3, 4] },
-        { ns: "db-svc", cells: [3, 4, 3, 4, 3] },
-        { ns: "cache-svc", cells: [2, 2, 3, 2, 2] },
-        { ns: "queue-svc", cells: [2, 2, 2, 2, 2] },
-        { ns: "dns-svc", cells: [1, 1, 1, 1, 1] },
-    ],
-    Clusters: [
-        { ns: "prod-east", cells: [5, 5, 5, 4, 5] },
-        { ns: "prod-west", cells: [4, 4, 4, 4, 4] },
-        { ns: "staging", cells: [2, 3, 2, 3, 2] },
-        { ns: "dev", cells: [1, 2, 1, 2, 1] },
-    ],
-};
+type HeatRow = { ns: string; cells: number[] };
+type HeatData = Record<string, HeatRow[]>;
+
+function buildHeatData(data: CostSummary | null): HeatData {
+    if (!data || data.items.length === 0) {
+        return { Namespaces: [{ ns: "loading…", cells: [1, 1, 1, 1, 1] }] };
+    }
+
+    const byNamespace: Record<string, number> = {};
+    const byKind: Record<string, number> = {};
+    data.items.forEach(item => {
+        const est = parseFloat(item.estimate.replace(/[^0-9.]/g, "")) || 0;
+        byNamespace[item.namespace] = (byNamespace[item.namespace] || 0) + est;
+        byKind[item.kind] = (byKind[item.kind] || 0) + est;
+    });
+
+    const toHeatLevel = (val: number, max: number): number => {
+        if (max === 0) return 1;
+        const ratio = val / max;
+        if (ratio >= 0.8) return 5;
+        if (ratio >= 0.6) return 4;
+        if (ratio >= 0.4) return 3;
+        if (ratio >= 0.2) return 2;
+        return 1;
+    };
+
+    const buildRows = (grouped: Record<string, number>): HeatRow[] => {
+        const entries = Object.entries(grouped).sort(([, a], [, b]) => b - a).slice(0, 6);
+        const max = entries.length > 0 ? entries[0][1] : 1;
+        return entries.map(([key, val]) => {
+            const level = toHeatLevel(val, max);
+            const cells = Array.from({ length: 5 }, (_, i) => Math.max(1, Math.min(5, level + (i % 2 === 0 ? 0 : -1))));
+            return { ns: key, cells };
+        });
+    };
+
+    return {
+        Namespaces: buildRows(byNamespace),
+        Kinds: buildRows(byKind),
+    };
+}
 
 export function KubernetesCostHeatmap() {
     const [tab, setTab] = useState("Namespaces");
-    const rows = DATA[tab] || DATA["Namespaces"];
+    const [heatData, setHeatData] = useState<HeatData>({ Namespaces: [{ ns: "loading…", cells: [1, 1, 1, 1, 1] }] });
+
+    useEffect(() => {
+        const load = () => {
+            getCostSummary()
+                .then((data: CostSummary) => { setHeatData(buildHeatData(data)); })
+                .catch(() => null);
+        };
+        load();
+        const id = setInterval(load, 15000);
+        return () => clearInterval(id);
+    }, []);
+
+    const tabs = Object.keys(heatData);
+    const rows = heatData[tab] || heatData[tabs[0]] || [];
 
     return (
         <div className="rounded-[12px] border border-[#21262d] bg-[#161b22] p-3.5">
@@ -47,7 +71,7 @@ export function KubernetesCostHeatmap() {
 
             {/* Tab bar */}
             <div className="flex items-center gap-0.5 p-0.5 rounded-md bg-[#0d1117] border border-[#30363d] mb-3 w-fit">
-                {Object.keys(DATA).map(t => (
+                {tabs.map(t => (
                     <button
                         key={t}
                         onClick={() => setTab(t)}

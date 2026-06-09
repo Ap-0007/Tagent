@@ -1,14 +1,53 @@
 "use client";
 
+import { useEffect, useState } from "react";
+import { getAutoscaling, getCostSummary, getRiskSummary, type AutoscalingSummary, type CostSummary, type RiskSummaryResponse } from "@/lib/api";
+
 export function AutoscalingStatsRow() {
+    const [autoscaling, setAutoscaling] = useState<AutoscalingSummary | null>(null);
+    const [cost, setCost] = useState<CostSummary | null>(null);
+    const [risk, setRisk] = useState<RiskSummaryResponse | null>(null);
+
+    useEffect(() => {
+        async function load() {
+            try {
+                const [as, cs, rs] = await Promise.all([
+                    getAutoscaling().catch(() => null),
+                    getCostSummary().catch(() => null),
+                    getRiskSummary().catch(() => null),
+                ]);
+                setAutoscaling(as);
+                setCost(cs);
+                setRisk(rs);
+            } catch { }
+        }
+        load();
+        const interval = setInterval(load, 15000);
+        return () => clearInterval(interval);
+    }, []);
+
+    // Derive current replicas from HPAs
+    const currentReplicas = autoscaling?.hpas?.reduce((sum, h) => sum + h.current, 0) || 0;
+    // Derive scale events from events array
+    const scaleEvents = autoscaling?.events?.length || 0;
+    // Predicted scale events from HPAs nearing max
+    const predictedScaleEvents = autoscaling?.hpas?.filter(h => h.current >= h.max * 0.8).length || 0;
+    // Efficiency: ratio of current to desired capacity
+    const totalDesired = autoscaling?.hpas?.reduce((sum, h) => sum + h.desired, 0) || 1;
+    const efficiencyScore = autoscaling ? Math.round((Math.min(currentReplicas, totalDesired) / Math.max(totalDesired, 1)) * 100) : 0;
+    // Resource savings from cost summary
+    const resourceSavings = cost?.potential_savings || "—";
+    // AI confidence from risk summary
+    const aiConfidence = risk?.ai_confidence || 0;
+
     return (
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-            <StatCard label="Current Replicas" value="78" trend="↗ 12% vs yesterday" trendColor="#3fb950" color="#3fb950" />
-            <StatCard label="Scale Events Today" value="24" trend="+ 33% vs yesterday" trendColor="#f0883e" color="#58a6ff" sparkline />
-            <StatCard label="Predicted Scale Events" value="9" trend="Next 24 hours" trendColor="#8b949e" color="#a371f7" />
-            <StatCard label="Efficiency Score" value="94%" trend="Excellent" trendColor="#3fb950" color="#3fb950" ring={94} />
-            <StatCard label="Resource Savings" value="$4,280" trend="↗ vs last month" trendColor="#3fb950" color="#22d3ee" />
-            <StatCard label="AI Confidence" value="96%" trend="High Confidence" trendColor="#3fb950" color="#a371f7" ring={96} />
+            <StatCard label="Current Replicas" value={autoscaling ? String(currentReplicas) : "—"} trend={autoscaling ? `${autoscaling.hpas?.length || 0} HPAs active` : ""} trendColor="#3fb950" color="#3fb950" />
+            <StatCard label="Scale Events Today" value={autoscaling ? String(scaleEvents) : "—"} trend={scaleEvents > 0 ? "events recorded" : "no events"} trendColor="#f0883e" color="#58a6ff" sparkline />
+            <StatCard label="Predicted Scale Events" value={autoscaling ? String(predictedScaleEvents) : "—"} trend="HPAs near max capacity" trendColor="#8b949e" color="#a371f7" />
+            <StatCard label="Efficiency Score" value={autoscaling ? `${efficiencyScore}%` : "—"} trend={efficiencyScore >= 90 ? "Excellent" : efficiencyScore >= 70 ? "Good" : "Needs attention"} trendColor="#3fb950" color="#3fb950" ring={efficiencyScore} />
+            <StatCard label="Resource Savings" value={resourceSavings} trend={cost ? "potential savings" : ""} trendColor="#3fb950" color="#22d3ee" />
+            <StatCard label="AI Confidence" value={risk ? `${aiConfidence}%` : "—"} trend={aiConfidence >= 90 ? "High Confidence" : aiConfidence >= 70 ? "Moderate" : "Low"} trendColor="#3fb950" color="#a371f7" ring={aiConfidence} />
         </div>
     );
 }

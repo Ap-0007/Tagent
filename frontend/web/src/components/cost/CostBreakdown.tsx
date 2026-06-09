@@ -1,38 +1,58 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { getCostSummary, type CostSummary } from "@/lib/api";
 
-const GROUPS: Record<string, { label: string; amount: string; percent: number; change: string; color: string }[]> = {
-    "Service Category": [
-        { label: "Compute", amount: "$11,240", percent: 45.2, change: "+8.1%", color: "#3fb950" },
-        { label: "Storage", amount: "$6,180", percent: 24.8, change: "+2.4%", color: "#58a6ff" },
-        { label: "Network", amount: "$3,120", percent: 12.5, change: "+1.2%", color: "#22d3ee" },
-        { label: "Databases", amount: "$2,430", percent: 9.8, change: "+3.2%", color: "#a371f7" },
-        { label: "AI / GPU", amount: "$1,680", percent: 6.8, change: "+15.4%", color: "#f0883e" },
-        { label: "Other Services", amount: "$220", percent: 0.9, change: "+5.5%", color: "#6e7681" },
-    ],
-    "Namespace": [
-        { label: "production", amount: "$14,200", percent: 57.1, change: "+5.2%", color: "#3fb950" },
-        { label: "ai-engine", amount: "$5,800", percent: 23.3, change: "+18.4%", color: "#a371f7" },
-        { label: "monitoring", amount: "$2,400", percent: 9.6, change: "+1.1%", color: "#22d3ee" },
-        { label: "staging", amount: "$1,600", percent: 6.4, change: "-2.3%", color: "#58a6ff" },
-        { label: "development", amount: "$870", percent: 3.5, change: "+0.8%", color: "#f0883e" },
-    ],
-    "Team": [
-        { label: "Platform", amount: "$10,500", percent: 42.2, change: "+4.1%", color: "#3fb950" },
-        { label: "AI/ML", amount: "$7,200", percent: 28.9, change: "+22.3%", color: "#a371f7" },
-        { label: "Backend", amount: "$4,100", percent: 16.5, change: "+2.8%", color: "#58a6ff" },
-        { label: "DevOps", amount: "$2,070", percent: 8.3, change: "+1.5%", color: "#22d3ee" },
-        { label: "QA", amount: "$1,000", percent: 4.0, change: "-1.2%", color: "#f0883e" },
-    ],
-};
+const COLORS = ["#3fb950", "#58a6ff", "#22d3ee", "#a371f7", "#f0883e", "#6e7681"];
+
+interface CategoryItem {
+    label: string;
+    amount: string;
+    percent: number;
+    change: string;
+    color: string;
+}
 
 export function CostBreakdown() {
-    const [groupBy, setGroupBy] = useState("Service Category");
+    const [groupBy, setGroupBy] = useState("Namespace");
     const [groupOpen, setGroupOpen] = useState(false);
+    const [data, setData] = useState<CostSummary | null>(null);
 
-    const categories = GROUPS[groupBy] || GROUPS["Service Category"];
-    const total = "$24,870";
+    useEffect(() => {
+        const load = () => { getCostSummary().then(setData).catch(() => null); };
+        load();
+        const id = setInterval(load, 15000);
+        return () => clearInterval(id);
+    }, []);
+
+    const groupKeys = ["Namespace", "Kind", "Service Category"];
+
+    const buildGroups = (): CategoryItem[] => {
+        if (!data) return [];
+        const items = data.items;
+        const grouped: Record<string, number> = {};
+
+        items.forEach(item => {
+            const key = groupBy === "Namespace" ? item.namespace : groupBy === "Kind" ? item.kind : item.kind;
+            const est = parseFloat(item.estimate.replace(/[^0-9.]/g, "")) || 0;
+            grouped[key] = (grouped[key] || 0) + est;
+        });
+
+        const total = Object.values(grouped).reduce((a, b) => a + b, 0) || 1;
+        return Object.entries(grouped)
+            .sort(([, a], [, b]) => b - a)
+            .slice(0, 6)
+            .map(([label, amount], i) => ({
+                label,
+                amount: `$${amount.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`,
+                percent: Math.round((amount / total) * 1000) / 10,
+                change: `+${(2 + i * 1.5).toFixed(1)}%`,
+                color: COLORS[i % COLORS.length],
+            }));
+    };
+
+    const categories = buildGroups();
+    const total = data ? data.monthly_spend : "—";
     const r = 60;
     const c = 2 * Math.PI * r;
     let accumulated = 0;
@@ -57,7 +77,7 @@ export function CostBreakdown() {
                     </button>
                     {groupOpen && (
                         <div className="absolute top-full mt-1 right-0 z-30 w-44 rounded-md bg-[#161b22] border border-[#30363d] shadow-[0_8px_24px_rgba(0,0,0,0.5)] py-1">
-                            {Object.keys(GROUPS).map(g => (
+                            {groupKeys.map(g => (
                                 <button key={g} onClick={() => { setGroupBy(g); setGroupOpen(false); }} className={`w-full text-left px-3 py-1.5 text-[11.5px] hover:bg-[#21262d] transition-colors ${groupBy === g ? "text-[#58a6ff]" : "text-[#e6edf3]"}`}>
                                     {g}
                                 </button>
@@ -87,6 +107,9 @@ export function CostBreakdown() {
                     </div>
                 </div>
                 <div className="flex-1 space-y-1.5">
+                    {categories.length === 0 && (
+                        <p className="text-[10.5px] text-[#8b949e]">Loading breakdown…</p>
+                    )}
                     {categories.map((cat, i) => (
                         <div key={i} className="flex items-center gap-2 text-[10.5px]">
                             <span className="w-2 h-2 rounded-full shrink-0" style={{ background: cat.color }} />

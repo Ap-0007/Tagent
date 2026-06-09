@@ -2,7 +2,25 @@
 
 import { useEffect, useState } from "react";
 import { getClusterState, type ClusterState } from "@/lib/api";
-import { Network, Loader2, WifiOff } from "lucide-react";
+import { Loader2, WifiOff } from "lucide-react";
+
+// Colors for different service types
+const SERVICE_COLORS: Record<string, string> = {
+    "ClusterIP": "#3fb950",
+    "NodePort": "#58a6ff",
+    "LoadBalancer": "#a371f7",
+    "ExternalName": "#22d3ee",
+};
+
+const STATUS_COLORS: Record<string, string> = {
+    "Running": "#3fb950",
+    "CrashLoopBackOff": "#f85149",
+    "Error": "#f85149",
+    "Pending": "#f0883e",
+    "OOMKilled": "#f85149",
+    "Ready": "#3fb950",
+    "NotReady": "#f85149",
+};
 
 export default function TopologyPage() {
     const [data, setData] = useState<ClusterState | null>(null);
@@ -22,100 +40,183 @@ export default function TopologyPage() {
             }
         }
         load();
+        const interval = setInterval(load, 15000);
+        return () => clearInterval(interval);
     }, []);
 
-    return (
-        <div className="flex-1 overflow-y-auto scrollbar bg-[#0d1117]">
-            <header className="px-6 py-5 border-b border-zinc-800/60">
-                <div className="flex items-center justify-between">
-                    <div>
-                        <h1 className="text-lg font-semibold text-zinc-100">Service Topology</h1>
-                        <p className="text-sm text-zinc-500 mt-0.5">
-                            {data ? `${data.services?.length || 0} services · ${data.deployments?.length || 0} deployments · ${data.nodes?.length || 0} nodes` : "Loading..."}
-                        </p>
-                    </div>
-                    {loading && <Loader2 className="w-4 h-4 text-zinc-500 animate-spin" />}
-                    {error && <WifiOff className="w-4 h-4 text-amber-400" />}
-                </div>
-            </header>
-
-            <div className="px-6 py-5">
-                {!data && !loading && (
-                    <div className="text-center py-12">
-                        <Network className="w-8 h-8 text-zinc-600 mx-auto mb-3" />
-                        <p className="text-sm text-zinc-400">{error ? "Cannot reach cluster" : "No topology data"}</p>
-                    </div>
-                )}
-
-                {data && (
-                    <div className="space-y-4">
-                        {/* Stats */}
-                        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-                            <StatCard label="Nodes" value={data.nodes?.length || 0} color="#22d3ee" />
-                            <StatCard label="Pods" value={data.pods?.length || 0} color="#3fb950" />
-                            <StatCard label="Deployments" value={data.deployments?.length || 0} color="#a371f7" />
-                            <StatCard label="Services" value={data.services?.length || 0} color="#58a6ff" />
-                            <StatCard label="Namespaces" value={data.namespaces?.length || 0} color="#f0883e" />
-                        </div>
-
-                        {/* Node → Pod mapping */}
-                        <div className="rounded-[12px] border border-[#21262d] bg-[#161b22] p-4">
-                            <h3 className="text-[14px] font-semibold text-[#e6edf3] mb-3">Node → Pod Distribution</h3>
-                            <div className="space-y-3">
-                                {data.nodes?.map(node => {
-                                    const nodePods = data.pods?.filter(p => p.node === node.name) || [];
-                                    const running = nodePods.filter(p => p.status === "Running").length;
-                                    const failing = nodePods.filter(p => p.status !== "Running" && p.status !== "Succeeded" && p.status !== "Completed").length;
-                                    return (
-                                        <div key={node.name} className="p-3 rounded-lg bg-[#0d1117] border border-[#21262d]">
-                                            <div className="flex items-center justify-between mb-2">
-                                                <div className="flex items-center gap-2">
-                                                    <span className={`w-2 h-2 rounded-full ${node.status === "Ready" ? "bg-emerald-400" : "bg-red-400"}`} />
-                                                    <span className="text-[12px] text-[#e6edf3] font-mono font-medium">{node.name}</span>
-                                                    <span className="text-[10px] text-[#8b949e]">{node.role}</span>
-                                                </div>
-                                                <span className="text-[10px] text-[#8b949e]">{nodePods.length} pods</span>
-                                            </div>
-                                            <div className="flex items-center gap-2">
-                                                <div className="flex-1 h-2 bg-[#21262d] rounded-full overflow-hidden">
-                                                    <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${nodePods.length > 0 ? (running / nodePods.length) * 100 : 0}%` }} />
-                                                </div>
-                                                <span className="text-[10px] text-emerald-400">{running} running</span>
-                                                {failing > 0 && <span className="text-[10px] text-red-400">{failing} failing</span>}
-                                            </div>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        </div>
-
-                        {/* Services list */}
-                        <div className="rounded-[12px] border border-[#21262d] bg-[#161b22] p-4">
-                            <h3 className="text-[14px] font-semibold text-[#e6edf3] mb-3">Services ({data.services?.length || 0})</h3>
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
-                                {data.services?.slice(0, 30).map(svc => (
-                                    <div key={`${svc.namespace}/${svc.name}`} className="flex items-center gap-2 p-2 rounded-md bg-[#0d1117] border border-[#21262d]">
-                                        <span className="w-2 h-2 rounded-full bg-[#58a6ff]" />
-                                        <div className="flex-1 min-w-0">
-                                            <p className="text-[11px] text-[#e6edf3] font-mono truncate">{svc.name}</p>
-                                            <p className="text-[9px] text-[#8b949e]">{svc.namespace} · {svc.type} · {svc.ports}</p>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    </div>
-                )}
+    if (loading) {
+        return (
+            <div className="flex-1 flex items-center justify-center bg-[#0d1117]">
+                <Loader2 className="w-5 h-5 text-zinc-500 animate-spin mr-2" />
+                <span className="text-sm text-zinc-500">Loading topology...</span>
             </div>
-        </div>
-    );
-}
+        );
+    }
 
-function StatCard({ label, value, color }: { label: string; value: number; color: string }) {
+    if (!data) {
+        return (
+            <div className="flex-1 flex items-center justify-center bg-[#0d1117]">
+                <WifiOff className="w-5 h-5 text-amber-400 mr-2" />
+                <span className="text-sm text-zinc-400">{error || "No cluster data"}</span>
+            </div>
+        );
+    }
+
+    // Build topology data from real cluster state
+    const nodes = data.nodes || [];
+    const pods = data.pods || [];
+    const services = data.services || [];
+    const deployments = data.deployments || [];
+    const namespaces = data.namespaces || [];
+
+    // Group pods by deployment/service name (strip random suffix)
+    const serviceGroups: Record<string, { name: string; namespace: string; podCount: number; status: string; type: string }> = {};
+
+    for (const dep of deployments) {
+        serviceGroups[`${dep.namespace}/${dep.name}`] = {
+            name: dep.name,
+            namespace: dep.namespace,
+            podCount: dep.replicas,
+            status: dep.ready === dep.replicas ? "healthy" : dep.ready > 0 ? "degraded" : "critical",
+            type: "deployment",
+        };
+    }
+
+    for (const svc of services) {
+        const key = `${svc.namespace}/${svc.name}`;
+        if (!serviceGroups[key]) {
+            serviceGroups[key] = {
+                name: svc.name,
+                namespace: svc.namespace,
+                podCount: 0,
+                status: "healthy",
+                type: svc.type,
+            };
+        }
+    }
+
+    const groupList = Object.values(serviceGroups);
+
     return (
-        <div className="rounded-lg border border-[#21262d] bg-[#161b22] p-3">
-            <p className="text-[10px] text-[#8b949e] mb-1">{label}</p>
-            <p className="text-[20px] font-bold font-mono" style={{ color }}>{value}</p>
+        <div className="flex-1 overflow-hidden bg-[#0d1117] flex flex-col">
+            {/* Header */}
+            <div className="px-5 py-3 border-b border-[#21262d] flex items-center justify-between shrink-0">
+                <div className="flex items-center gap-3">
+                    <h1 className="text-[15px] font-semibold text-[#e6edf3]">Kubernetes Topology</h1>
+                    <span className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-[#3fb950]/10 border border-[#3fb950]/30">
+                        <span className="w-1.5 h-1.5 rounded-full bg-[#3fb950] animate-pulse" />
+                        <span className="text-[10px] text-[#3fb950] font-semibold">Live</span>
+                    </span>
+                </div>
+                <div className="flex items-center gap-4 text-[10px] text-[#8b949e]">
+                    <span>{nodes.length} Nodes</span>
+                    <span>{pods.length} Pods</span>
+                    <span>{services.length} Services</span>
+                    <span>{deployments.length} Deployments</span>
+                </div>
+            </div>
+
+            {/* Topology Visualization */}
+            <div className="flex-1 overflow-auto p-5">
+                {/* Visual graph area */}
+                <div className="relative w-full min-h-[600px] rounded-xl border border-[#21262d]" style={{
+                    background: "radial-gradient(ellipse 80% 60% at 50% 50%, rgba(30,60,120,0.12) 0%, transparent 70%), linear-gradient(180deg, #080c18 0%, #0a1020 50%, #080c18 100%)"
+                }}>
+                    {/* Node layer (top) */}
+                    <div className="absolute top-6 left-0 right-0 flex justify-center gap-4 px-8">
+                        {nodes.map((node, i) => {
+                            const nodePods = pods.filter(p => p.node === node.name);
+                            const failing = nodePods.filter(p => p.status !== "Running" && p.status !== "Succeeded" && p.status !== "Completed").length;
+                            return (
+                                <div key={node.name} className="flex flex-col items-center group">
+                                    <div className={`w-14 h-14 rounded-xl border-2 flex items-center justify-center transition-all group-hover:scale-110 ${node.status === "Ready" ? "border-[#3fb950] bg-[#3fb950]/10" : "border-[#f85149] bg-[#f85149]/10"}`}
+                                        style={{ boxShadow: `0 0 12px ${node.status === "Ready" ? "#3fb95040" : "#f8514940"}` }}>
+                                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={node.status === "Ready" ? "#3fb950" : "#f85149"} strokeWidth="1.5">
+                                            <rect x="2" y="3" width="20" height="14" rx="2" />
+                                            <line x1="8" y1="21" x2="16" y2="21" />
+                                            <line x1="12" y1="17" x2="12" y2="21" />
+                                        </svg>
+                                    </div>
+                                    <span className="text-[10px] text-[#e6edf3] font-mono mt-1.5 max-w-[100px] truncate">{node.name.replace("ip-", "")}</span>
+                                    <span className="text-[9px] text-[#8b949e]">{nodePods.length} pods{failing > 0 ? ` · ${failing} failing` : ""}</span>
+                                </div>
+                            );
+                        })}
+                    </div>
+
+                    {/* Service/Deployment layer (middle) */}
+                    <div className="absolute top-[140px] left-0 right-0 px-8">
+                        <div className="flex flex-wrap justify-center gap-3">
+                            {groupList.slice(0, 24).map((svc, i) => {
+                                const color = svc.status === "healthy" ? "#3fb950" : svc.status === "degraded" ? "#f0883e" : "#f85149";
+                                return (
+                                    <div key={`${svc.namespace}/${svc.name}`} className="flex flex-col items-center group">
+                                        <div className="w-12 h-12 rounded-lg border flex items-center justify-center transition-all group-hover:scale-110"
+                                            style={{ borderColor: color, background: `${color}15`, boxShadow: `0 0 8px ${color}30` }}>
+                                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.5">
+                                                <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
+                                            </svg>
+                                        </div>
+                                        <span className="text-[9px] text-[#e6edf3] font-mono mt-1 max-w-[80px] truncate">{svc.name}</span>
+                                        <span className="text-[8px] text-[#8b949e]">{svc.podCount} pods</span>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+
+                    {/* Namespace layer (bottom) */}
+                    <div className="absolute bottom-6 left-0 right-0 flex justify-center gap-3 px-8">
+                        {namespaces.slice(0, 8).map(ns => {
+                            const nsPods = pods.filter(p => p.namespace === ns);
+                            return (
+                                <div key={ns} className="px-3 py-2 rounded-lg bg-[#161b22] border border-[#21262d] text-center">
+                                    <span className="text-[10px] text-[#58a6ff] font-mono">{ns}</span>
+                                    <span className="text-[8px] text-[#8b949e] block">{nsPods.length} pods</span>
+                                </div>
+                            );
+                        })}
+                    </div>
+
+                    {/* Connection lines (SVG) */}
+                    <svg className="absolute inset-0 w-full h-full pointer-events-none" style={{ zIndex: 0 }}>
+                        <defs>
+                            <linearGradient id="line-green" x1="0%" y1="0%" x2="0%" y2="100%">
+                                <stop offset="0%" stopColor="#3fb950" stopOpacity="0.6" />
+                                <stop offset="100%" stopColor="#3fb950" stopOpacity="0.1" />
+                            </linearGradient>
+                            <linearGradient id="line-blue" x1="0%" y1="0%" x2="0%" y2="100%">
+                                <stop offset="0%" stopColor="#58a6ff" stopOpacity="0.5" />
+                                <stop offset="100%" stopColor="#58a6ff" stopOpacity="0.1" />
+                            </linearGradient>
+                        </defs>
+                        {/* Animated orbital paths */}
+                        <ellipse cx="50%" cy="45%" rx="35%" ry="25%" fill="none" stroke="#22d3ee" strokeWidth="0.5" strokeOpacity="0.2" strokeDasharray="4 6" />
+                        <ellipse cx="50%" cy="45%" rx="25%" ry="18%" fill="none" stroke="#3fb950" strokeWidth="0.5" strokeOpacity="0.15" strokeDasharray="3 5" />
+                        {/* Animated dot on path */}
+                        <circle r="2.5" fill="#22d3ee" opacity="0.8">
+                            <animateMotion dur="8s" repeatCount="indefinite" path="M 400,270 m -200,0 a 200,150 0 1,0 400,0 a 200,150 0 1,0 -400,0" />
+                        </circle>
+                        <circle r="2" fill="#3fb950" opacity="0.7">
+                            <animateMotion dur="6s" repeatCount="indefinite" path="M 400,270 m -150,0 a 150,108 0 1,1 300,0 a 150,108 0 1,1 -300,0" />
+                        </circle>
+                    </svg>
+
+                    {/* Legend */}
+                    <div className="absolute bottom-6 left-6 space-y-1.5">
+                        <div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-[#3fb950]" /><span className="text-[9px] text-[#8b949e]">Healthy</span></div>
+                        <div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-[#f0883e]" /><span className="text-[9px] text-[#8b949e]">Degraded</span></div>
+                        <div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-[#f85149]" /><span className="text-[9px] text-[#8b949e]">Critical</span></div>
+                    </div>
+
+                    {/* Stats overlay */}
+                    <div className="absolute bottom-6 right-6 flex items-center gap-4 text-[10px] font-mono">
+                        <span className="text-[#8b949e]">Pods <span className="text-[#3fb950] font-semibold">{pods.filter(p => p.status === "Running").length}</span>/{pods.length}</span>
+                        <span className="text-[#8b949e]">Services <span className="text-[#58a6ff] font-semibold">{services.length}</span></span>
+                        <span className="text-[#8b949e]">Failing <span className="text-[#f85149] font-semibold">{pods.filter(p => p.status !== "Running" && p.status !== "Succeeded" && p.status !== "Completed").length}</span></span>
+                    </div>
+                </div>
+            </div>
         </div>
     );
 }

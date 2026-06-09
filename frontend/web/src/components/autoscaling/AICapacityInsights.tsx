@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { getAutoscaling, getPredictivePredictions } from "@/lib/api";
 
 const ALL_INSIGHTS = [
     { text: "API Gateway scaling efficiently", sub: "Traffic pattern matches capacity", confidence: 96, impact: "Optimal", impactColor: "#3fb950" },
@@ -12,9 +13,84 @@ const ALL_INSIGHTS = [
     { text: "Worker batch job idle", sub: "Consider scaling to zero", confidence: 91, impact: "Low", impactColor: "#22d3ee" },
 ];
 
+function deriveInsights(
+    hpas: Array<{ name: string; current: number; desired: number; min: number; max: number; status: string }>,
+    predictions: Array<{ resource: string; predicted_issue: string; probability: number; confidence: number }>
+) {
+    const insights: typeof ALL_INSIGHTS = [];
+
+    for (const hpa of hpas) {
+        if (hpa.current < hpa.desired) {
+            insights.push({
+                text: `${hpa.name} scaling up`,
+                sub: `Current ${hpa.current} → Desired ${hpa.desired}`,
+                confidence: 94,
+                impact: "High",
+                impactColor: "#f0883e",
+            });
+        } else if (hpa.current >= hpa.max * 0.9) {
+            insights.push({
+                text: `${hpa.name} near max capacity`,
+                sub: `At ${hpa.current}/${hpa.max} replicas`,
+                confidence: 92,
+                impact: "Medium",
+                impactColor: "#f0883e",
+            });
+        } else if (hpa.current === hpa.desired && hpa.status === "Healthy") {
+            insights.push({
+                text: `${hpa.name} scaling efficiently`,
+                sub: "Traffic pattern matches capacity",
+                confidence: 96,
+                impact: "Optimal",
+                impactColor: "#3fb950",
+            });
+        } else if (hpa.current <= hpa.min) {
+            insights.push({
+                text: `${hpa.name} at minimum`,
+                sub: "Consider scaling to zero if idle",
+                confidence: 91,
+                impact: "Low",
+                impactColor: "#22d3ee",
+            });
+        }
+    }
+
+    for (const pred of predictions.slice(0, 3)) {
+        insights.push({
+            text: `${pred.resource} predicted issue`,
+            sub: pred.predicted_issue,
+            confidence: Math.round(pred.confidence * 100) || Math.round(pred.probability * 100),
+            impact: pred.probability > 0.7 ? "High" : "Medium",
+            impactColor: pred.probability > 0.7 ? "#f0883e" : "#a371f7",
+        });
+    }
+
+    return insights.length > 0 ? insights : [];
+}
+
 export function AICapacityInsights() {
     const [showAll, setShowAll] = useState(false);
-    const visible = showAll ? ALL_INSIGHTS : ALL_INSIGHTS.slice(0, 5);
+    const [insights, setInsights] = useState<typeof ALL_INSIGHTS>([]);
+
+    useEffect(() => {
+        function load() {
+            Promise.all([
+                getAutoscaling().catch(() => null),
+                getPredictivePredictions().catch(() => null),
+            ]).then(([autoscaling, predictive]) => {
+                const hpas = autoscaling?.hpas || [];
+                const predictions = predictive?.predictions || [];
+                if (hpas.length > 0 || predictions.length > 0) {
+                    setInsights(deriveInsights(hpas, predictions));
+                }
+            });
+        }
+        load();
+        const interval = setInterval(load, 15000);
+        return () => clearInterval(interval);
+    }, []);
+
+    const visible = showAll ? insights : insights.slice(0, 5);
     return (
         <div className="rounded-[12px] border border-[#21262d] bg-[#161b22] p-3.5">
             <div className="flex items-center justify-between mb-3">
