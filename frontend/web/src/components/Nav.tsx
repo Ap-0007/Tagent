@@ -27,6 +27,7 @@ const links = [
         group: "Intelligence", items: [
             { href: "/incidents", icon: AlertTriangle, label: "Incidents", badge: 12 },
             { href: "/ai", icon: MessageSquare, label: "AI Insights" },
+            { href: "/models", icon: Cpu, label: "AI Models" },
             { href: "/risks", icon: ShieldAlert, label: "Risk Scanner" },
             { href: "/reports", icon: BookOpen, label: "Knowledge" },
             { href: "/metrics", icon: Activity, label: "Metrics" },

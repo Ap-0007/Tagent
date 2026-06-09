@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { getDeployments, DeploymentInfo } from "@/lib/api";
 
 // ─── Deployment Health Matrix ────────────────────────────────────────────────
 
@@ -17,18 +18,24 @@ interface Deployment {
     restartTrend: "stable" | "rising" | "falling";
 }
 
-const DEPLOYMENTS: Deployment[] = [
-    { name: "Tagent AI Engine", env: "prod", namespace: "default", healthScore: 98, replicas: "6/6", version: "v2.4.1", age: "2h 15m", cpu: 42, memory: 61, restartTrend: "stable" },
-    { name: "Tagent API Gateway", env: "prod", namespace: "default", healthScore: 96, replicas: "4/4", version: "v3.1.0", age: "45m", cpu: 38, memory: 54, restartTrend: "stable" },
-    { name: "Tagent Monitoring", env: "prod", namespace: "monitoring", healthScore: 93, replicas: "3/3", version: "v1.9.3", age: "1h 10m", cpu: 51, memory: 66, restartTrend: "stable" },
-    { name: "PostgreSQL", env: "database", namespace: "database", healthScore: 95, replicas: "2/2", version: "v2.0.4", age: "15.4h", cpu: 29, memory: 43, restartTrend: "stable" },
-    { name: "Tagent Discovery", env: "prod", namespace: "default", healthScore: 91, replicas: "3/3", version: "v1.7.8", age: "2h 22m", cpu: 33, memory: 57, restartTrend: "rising" },
-    { name: "Tagent Notification", env: "prod", namespace: "default", healthScore: 88, replicas: "2/3", version: "v1.5.5", age: "1h 55m", cpu: 67, memory: 78, restartTrend: "rising" },
-    { name: "Ollama", env: "prod", namespace: "ai", healthScore: 56, replicas: "0/2", version: "v0.5.7", age: "2h 40m", cpu: 0, memory: 0, restartTrend: "rising" },
-    { name: "Tagent Remediation", env: "prod", namespace: "default", healthScore: 90, replicas: "2/2", version: "v1.3.2", age: "50m", cpu: 0, memory: 0, restartTrend: "stable" },
-];
+function mapDeploymentInfo(d: DeploymentInfo): Deployment {
+    const healthScore = d.replicas > 0 ? Math.round((d.ready / d.replicas) * 100) : 0;
+    return {
+        name: d.name,
+        env: "prod",
+        namespace: d.namespace,
+        healthScore,
+        replicas: `${d.ready}/${d.replicas}`,
+        version: "—",
+        age: d.age,
+        cpu: 0,
+        memory: 0,
+        restartTrend: "stable",
+    };
+}
 
 export function DeploymentHealthMatrix() {
+    const [deployments, setDeployments] = useState<Deployment[] | null>(null);
     const [namespace, setNamespace] = useState("all");
     const [nsOpen, setNsOpen] = useState(false);
     const [view, setView] = useState<"grid" | "list">("grid");
@@ -36,9 +43,21 @@ export function DeploymentHealthMatrix() {
     const [healthFilter, setHealthFilter] = useState<"all" | "healthy" | "degraded" | "critical">("all");
     const [menuOpen, setMenuOpen] = useState(false);
 
-    const namespaces = ["all", ...Array.from(new Set(DEPLOYMENTS.map(d => d.namespace)))];
+    useEffect(() => {
+        function fetchData() {
+            getDeployments()
+                .then((data) => setDeployments(data.map(mapDeploymentInfo)))
+                .catch(() => setDeployments([]));
+        }
+        fetchData();
+        const interval = setInterval(fetchData, 15000);
+        return () => clearInterval(interval);
+    }, []);
 
-    const filtered = DEPLOYMENTS.filter(d => {
+    const data = deployments ?? [];
+    const namespaces = ["all", ...Array.from(new Set(data.map(d => d.namespace)))];
+
+    const filtered = data.filter(d => {
         if (namespace !== "all" && d.namespace !== namespace) return false;
         if (healthFilter === "healthy" && d.healthScore < 90) return false;
         if (healthFilter === "degraded" && (d.healthScore >= 90 || d.healthScore < 60)) return false;
@@ -110,20 +129,26 @@ export function DeploymentHealthMatrix() {
             </div>
             <p className="text-[10.5px] text-[#8b949e] mb-3">Real-time health, performance, and status of all deployments</p>
 
-            {filtered.length === 0 && (
+            {deployments === null && (
+                <div className="py-8 text-center">
+                    <p className="text-[12px] text-[#8b949e]">—</p>
+                </div>
+            )}
+
+            {deployments !== null && filtered.length === 0 && (
                 <div className="py-8 text-center">
                     <p className="text-[12px] text-[#8b949e]">No deployments match filters.</p>
                     <button onClick={() => { setNamespace("all"); setHealthFilter("all"); }} className="mt-2 text-[11px] text-[#58a6ff]">Clear filters</button>
                 </div>
             )}
 
-            {filtered.length > 0 && view === "grid" && (
+            {deployments !== null && filtered.length > 0 && view === "grid" && (
                 <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-2.5">
                     {filtered.map((d, i) => <DeploymentCard key={i} deployment={d} />)}
                 </div>
             )}
 
-            {filtered.length > 0 && view === "list" && (
+            {deployments !== null && filtered.length > 0 && view === "list" && (
                 <div className="space-y-1.5">
                     {filtered.map((d, i) => <DeploymentListRow key={i} deployment={d} />)}
                 </div>

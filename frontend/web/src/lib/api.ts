@@ -324,6 +324,105 @@ export async function getMetricsSummary(): Promise<MetricsSummary> {
     return request<MetricsSummary>("/api/v1/metrics/summary");
 }
 
+// ===== Network Metrics =====
+
+export interface NetworkMetrics {
+    total_bandwidth: string;
+    receive_bytes_per_sec: number;
+    transmit_bytes_per_sec: number;
+    receive_packets_per_sec: number;
+    transmit_packets_per_sec: number;
+    receive_errors_per_sec: number;
+    transmit_errors_per_sec: number;
+    receive_dropped_per_sec: number;
+    transmit_dropped_per_sec: number;
+    node_receive: Array<{ node: string; bytes_per_sec: number; formatted: string }> | null;
+    node_transmit: Array<{ node: string; bytes_per_sec: number; formatted: string }> | null;
+}
+
+export async function getNetworkMetrics(): Promise<NetworkMetrics> {
+    return request<NetworkMetrics>("/api/v1/metrics/network");
+}
+
+// ===== Traffic Telemetry (Service Mesh) =====
+
+export interface TrafficMetrics {
+    requests_per_sec: number;
+    errors_per_sec: number;
+    error_rate_percent: number;
+    p50_latency_ms: number;
+    p95_latency_ms: number;
+    p99_latency_ms: number;
+    success_rate: number;
+    throughput_bytes: number;
+    throughput: string;
+    service_traffic: Array<{ node: string; bytes_per_sec: number; formatted: string }> | null;
+}
+
+export async function getTrafficMetrics(): Promise<TrafficMetrics> {
+    return request<TrafficMetrics>("/api/v1/metrics/traffic");
+}
+
+// ===== Log Search (Loki) =====
+
+export interface LogSearchResult {
+    entries: Array<{ timestamp: string; line: string; labels: Record<string, string> }>;
+    total: number;
+    query: string;
+    source: string;
+}
+
+export async function searchLogs(query: string, namespace?: string, start?: string, end?: string, limit?: number): Promise<LogSearchResult> {
+    return request<LogSearchResult>("/api/v1/logs/search", {
+        method: "POST",
+        body: JSON.stringify({ query, namespace, start, end, limit: limit || 100 }),
+    });
+}
+
+// ===== Distributed Tracing (Jaeger) =====
+
+export interface TraceSpan {
+    traceID: string;
+    spanID: string;
+    operationName: string;
+    serviceName: string;
+    duration: number;
+    startTime: number;
+    tags: Record<string, string>;
+}
+
+export interface TraceInfo {
+    traceID: string;
+    spans: TraceSpan[];
+    services: string[];
+    duration: number;
+    startTime: number;
+    spanCount: number;
+}
+
+export interface TraceSearchResult {
+    traces: TraceInfo[];
+    total: number;
+    source: string;
+}
+
+export async function getTraces(service?: string, operation?: string, minDuration?: string): Promise<TraceSearchResult> {
+    const params = new URLSearchParams();
+    if (service) params.set("service", service);
+    if (operation) params.set("operation", operation);
+    if (minDuration) params.set("minDuration", minDuration);
+    const query = params.toString();
+    return request<TraceSearchResult>(`/api/v1/traces${query ? "?" + query : ""}`);
+}
+
+export async function getTrace(traceID: string): Promise<TraceInfo> {
+    return request<TraceInfo>(`/api/v1/traces/${encodeURIComponent(traceID)}`);
+}
+
+export async function getTraceServices(): Promise<{ services: string[]; source: string }> {
+    return request<{ services: string[]; source: string }>("/api/v1/traces/services");
+}
+
 // ===== Remediation =====
 
 export async function executeRemediation(payload: RemediationRequest): Promise<RemediationResult> {
@@ -1212,4 +1311,121 @@ export async function generateBriefing(): Promise<BriefingResponse> {
 
 export async function getBriefingHistory(): Promise<BriefingHistoryResponse> {
     return request<BriefingHistoryResponse>("/api/v1/briefing/history");
+}
+
+// ===== AI Model Management =====
+
+export interface LocalModelInfo {
+    id: string;
+    name: string;
+    size: string;
+    category: "small" | "medium" | "large" | "embedding";
+    description: string;
+    provider: string;
+    default?: boolean;
+}
+
+export interface CloudProviderInfo {
+    id: string;
+    name: string;
+    models: string[];
+    key_env: string;
+}
+
+export interface ModelCatalogResponse {
+    local_models: LocalModelInfo[];
+    cloud_providers: CloudProviderInfo[];
+}
+
+export interface InstalledModel {
+    id: string;
+    size: number;
+    size_human: string;
+    modified_at: string;
+    family: string;
+    parameter_size: string;
+    quantization: string;
+}
+
+export interface InstalledModelsResponse {
+    models: InstalledModel[];
+    total: number;
+}
+
+export interface ActiveModelResponse {
+    chat_model: string;
+    embedding_model: string;
+    endpoint: string;
+}
+
+export interface PullStatusResponse {
+    model_id: string;
+    status: "pulling" | "ready" | "error" | "unknown";
+    progress: number;
+    error: string | null;
+}
+
+export interface CloudKeyStatus {
+    id: string;
+    name: string;
+    has_key: boolean;
+    models: string[];
+}
+
+export interface CloudKeysResponse {
+    providers: CloudKeyStatus[];
+}
+
+export async function getModelCatalog(): Promise<ModelCatalogResponse> {
+    return request<ModelCatalogResponse>("/api/v1/models/catalog");
+}
+
+export async function getInstalledModels(): Promise<InstalledModelsResponse> {
+    return request<InstalledModelsResponse>("/api/v1/models/installed");
+}
+
+export async function getActiveModel(): Promise<ActiveModelResponse> {
+    return request<ActiveModelResponse>("/api/v1/models/active");
+}
+
+export async function pullModel(modelId: string): Promise<{ status: string; model_id: string; message?: string }> {
+    return request<{ status: string; model_id: string; message?: string }>("/api/v1/models/pull", {
+        method: "POST",
+        body: JSON.stringify({ model_id: modelId }),
+    });
+}
+
+export async function getPullStatus(modelId: string): Promise<PullStatusResponse> {
+    return request<PullStatusResponse>(`/api/v1/models/pull/status/${encodeURIComponent(modelId)}`);
+}
+
+export async function switchModel(modelId: string, modelType: "chat" | "embedding"): Promise<{ status: string; message: string }> {
+    return request<{ status: string; message: string }>("/api/v1/models/switch", {
+        method: "POST",
+        body: JSON.stringify({ model_id: modelId, model_type: modelType }),
+    });
+}
+
+export async function deleteModel(modelId: string): Promise<{ status: string; model_id: string }> {
+    return request<{ status: string; model_id: string }>("/api/v1/models/delete", {
+        method: "DELETE",
+        body: JSON.stringify({ model_id: modelId }),
+    });
+}
+
+export async function storeCloudKey(providerId: string, apiKey: string): Promise<{ status: string; message: string }> {
+    return request<{ status: string; message: string }>("/api/v1/models/cloud/key", {
+        method: "POST",
+        body: JSON.stringify({ provider_id: providerId, api_key: apiKey }),
+    });
+}
+
+export async function getCloudKeys(): Promise<CloudKeysResponse> {
+    return request<CloudKeysResponse>("/api/v1/models/cloud/keys");
+}
+
+export async function deleteCloudKey(providerId: string): Promise<{ status: string }> {
+    return request<{ status: string }>(`/api/v1/models/cloud/key/${encodeURIComponent(providerId)}`, {
+        method: "DELETE",
+    });
 }

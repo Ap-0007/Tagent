@@ -1,14 +1,44 @@
 "use client";
 
+import { useEffect, useState } from "react";
+import { getDeployments, getRiskSummary, type DeploymentInfo, type RiskSummaryResponse } from "@/lib/api";
+
 export function DeploymentStatsRow() {
+    const [deployments, setDeployments] = useState<DeploymentInfo[]>([]);
+    const [riskSummary, setRiskSummary] = useState<RiskSummaryResponse | null>(null);
+
+    useEffect(() => {
+        async function load() {
+            try {
+                const [deps, risk] = await Promise.all([
+                    getDeployments().catch(() => []),
+                    getRiskSummary().catch(() => null),
+                ]);
+                setDeployments(deps || []);
+                setRiskSummary(risk);
+            } catch { }
+        }
+        load();
+        const interval = setInterval(load, 15000);
+        return () => clearInterval(interval);
+    }, []);
+
+    const total = deployments.length;
+    const healthy = deployments.filter(d => d.ready === d.replicas && d.replicas > 0).length;
+    const degraded = deployments.filter(d => d.ready < d.replicas && d.ready > 0).length;
+    const rolloutsInProgress = deployments.filter(d => d.available < d.replicas).length;
+    const riskScore = riskSummary?.overall_score || 0;
+    const riskLevel = riskSummary?.overall_level || "low";
+    const incidentExposure = riskSummary?.total_services_at_risk || 0;
+
     return (
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-            <StatCard label="Active Deployments" value="28" trend="↗ 4 this week" trendColor="#3fb950" color="#3fb950" />
-            <StatCard label="Healthy Deployments" value="21" badge="75% of total" color="#3fb950" />
-            <StatCard label="Degraded Deployments" value="4" badge="14% of total" color="#f0883e" />
-            <StatCard label="Rollouts In Progress" value="3" trend="+ 2 since last 24h" trendColor="#22d3ee" color="#22d3ee" />
-            <StatCard label="AI Risk Score" value="32" badge="Medium Risk" color="#f0883e" ring={32} ringMax={100} />
-            <StatCard label="Incident Exposure Score" value="18" badge="Low Exposure" color="#a371f7" ring={18} ringMax={100} />
+            <StatCard label="Active Deployments" value={total > 0 ? String(total) : "—"} trend={total > 0 ? `across ${new Set(deployments.map(d => d.namespace)).size} namespaces` : ""} trendColor="#3fb950" color="#3fb950" />
+            <StatCard label="Healthy Deployments" value={total > 0 ? String(healthy) : "—"} badge={total > 0 ? `${Math.round((healthy / total) * 100)}% of total` : ""} color="#3fb950" />
+            <StatCard label="Degraded Deployments" value={total > 0 ? String(degraded) : "—"} badge={total > 0 ? `${Math.round((degraded / total) * 100)}% of total` : ""} color="#f0883e" />
+            <StatCard label="Rollouts In Progress" value={String(rolloutsInProgress)} trend={rolloutsInProgress > 0 ? "active now" : "all stable"} trendColor="#22d3ee" color="#22d3ee" />
+            <StatCard label="AI Risk Score" value={riskSummary ? String(riskScore) : "—"} badge={riskLevel.charAt(0).toUpperCase() + riskLevel.slice(1) + " Risk"} color={riskScore > 60 ? "#f85149" : riskScore > 30 ? "#f0883e" : "#3fb950"} ring={riskScore} ringMax={100} />
+            <StatCard label="Incident Exposure Score" value={String(incidentExposure)} badge={incidentExposure <= 3 ? "Low Exposure" : incidentExposure <= 7 ? "Medium" : "High Exposure"} color="#a371f7" ring={Math.min(incidentExposure * 10, 100)} ringMax={100} />
         </div>
     );
 }

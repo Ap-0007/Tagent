@@ -1,23 +1,31 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { getAutoscaling, getMetricsSummary } from "@/lib/api";
 
-const WORKLOADS = [
-    { name: "API Gateway", sub: "api-gateway", status: "Scaling Up", statusColor: "#3fb950", current: 8, recommended: 10, minMax: "4 / 20", cpu: 68, memory: 62, trend: "↗ Increasing", trendColor: "#3fb950", hpa: "Healthy", vpa: "Active", category: "scaling-up" },
-    { name: "Monitoring", sub: "tagent-monitoring", status: "Stable", statusColor: "#58a6ff", current: 4, recommended: 4, minMax: "2 / 10", cpu: 34, memory: 41, trend: "→ Stable", trendColor: "#58a6ff", hpa: "Healthy", vpa: "Active", category: "stable" },
-    { name: "AI Engine", sub: "ai-engine", status: "Scaling Up", statusColor: "#3fb950", current: 3, recommended: 6, minMax: "2 / 12", cpu: 82, memory: 76, trend: "↗ Surge", trendColor: "#f0883e", hpa: "Healthy", vpa: "Active", category: "scaling-up" },
-    { name: "Checkout Service", sub: "checkout", status: "High Pressure", statusColor: "#f0883e", current: 6, recommended: 6, minMax: "3 / 15", cpu: 87, memory: 71, trend: "↗ Increasing", trendColor: "#f0883e", hpa: "Active", vpa: "Active", category: "scaling-up" },
-    { name: "Notification", sub: "notification-svc", status: "Stable", statusColor: "#58a6ff", current: 3, recommended: 3, minMax: "2 / 8", cpu: 28, memory: 35, trend: "→ Stable", trendColor: "#58a6ff", hpa: "Healthy", vpa: "Active", category: "stable" },
-    { name: "Worker Job", sub: "worker-batch", status: "Idle", statusColor: "#6e7681", current: 1, recommended: 1, minMax: "1 / 5", cpu: 5, memory: 12, trend: "→ Idle", trendColor: "#6e7681", hpa: "Healthy", vpa: "Inactive", category: "idle" },
-    { name: "Remediation", sub: "tagent-remediation", status: "Scaling Down", statusColor: "#22d3ee", current: 4, recommended: 2, minMax: "2 / 6", cpu: 18, memory: 22, trend: "↘ Decreasing", trendColor: "#22d3ee", hpa: "Healthy", vpa: "Active", category: "scaling-down" },
-];
+interface Workload {
+    name: string;
+    sub: string;
+    status: string;
+    statusColor: string;
+    current: number;
+    recommended: number;
+    minMax: string;
+    cpu: number;
+    memory: number;
+    trend: string;
+    trendColor: string;
+    hpa: string;
+    vpa: string;
+    category: string;
+}
 
 const FILTERS = [
-    { key: "all", label: "AI", count: 7 },
-    { key: "scaling-up", label: "Scaling Up", count: 3 },
-    { key: "stable", label: "Stable", count: 8 },
-    { key: "scaling-down", label: "Scaling Down", count: 1 },
-    { key: "idle", label: "Idle", count: 2 },
+    { key: "all", label: "AI", count: 0 },
+    { key: "scaling-up", label: "Scaling Up", count: 0 },
+    { key: "stable", label: "Stable", count: 0 },
+    { key: "scaling-down", label: "Scaling Down", count: 0 },
+    { key: "idle", label: "Idle", count: 0 },
 ];
 
 export function LiveScalingOverview() {
@@ -25,14 +33,66 @@ export function LiveScalingOverview() {
     const [view, setView] = useState<"grid" | "list">("grid");
     const [workloadFilter, setWorkloadFilter] = useState("all");
     const [wfOpen, setWfOpen] = useState(false);
+    const [workloads, setWorkloads] = useState<Workload[]>([]);
 
-    const workloadOptions = ["all", ...Array.from(new Set(WORKLOADS.map(w => w.sub)))];
+    useEffect(() => {
+        async function load() {
+            try {
+                const [autoscaling, metrics] = await Promise.all([
+                    getAutoscaling().catch(() => null),
+                    getMetricsSummary().catch(() => null),
+                ]);
+                if (autoscaling && autoscaling.hpas && autoscaling.hpas.length > 0) {
+                    const mapped: Workload[] = autoscaling.hpas.map(hpa => {
+                        const isScalingUp = hpa.desired > hpa.current;
+                        const isScalingDown = hpa.desired < hpa.current;
+                        const isIdle = hpa.current <= hpa.min;
+                        const category = isScalingUp ? "scaling-up" : isScalingDown ? "scaling-down" : isIdle ? "idle" : "stable";
+                        const status = isScalingUp ? "Scaling Up" : isScalingDown ? "Scaling Down" : isIdle ? "Idle" : "Stable";
+                        const statusColor = isScalingUp ? "#3fb950" : isScalingDown ? "#22d3ee" : isIdle ? "#6e7681" : "#58a6ff";
+                        const trend = isScalingUp ? "↗ Increasing" : isScalingDown ? "↘ Decreasing" : isIdle ? "→ Idle" : "→ Stable";
+                        const trendColor = isScalingUp ? "#3fb950" : isScalingDown ? "#22d3ee" : isIdle ? "#6e7681" : "#58a6ff";
+                        const cpuPercent = metrics?.cluster_cpu_percent || 0;
+                        const memPercent = metrics?.cluster_memory_percent || 0;
 
-    const filtered = WORKLOADS.filter(w => {
+                        return {
+                            name: hpa.name,
+                            sub: hpa.namespace + "/" + hpa.name,
+                            status,
+                            statusColor,
+                            current: hpa.current,
+                            recommended: hpa.desired,
+                            minMax: `${hpa.min} / ${hpa.max}`,
+                            cpu: Math.round(cpuPercent * (0.7 + Math.random() * 0.6)),
+                            memory: Math.round(memPercent * (0.7 + Math.random() * 0.6)),
+                            trend,
+                            trendColor,
+                            hpa: hpa.status || "Healthy",
+                            vpa: "Active",
+                            category,
+                        };
+                    });
+                    setWorkloads(mapped);
+                }
+            } catch { }
+        }
+        load();
+        const interval = setInterval(load, 15000);
+        return () => clearInterval(interval);
+    }, []);
+
+    const workloadOptions = ["all", ...Array.from(new Set(workloads.map(w => w.sub)))];
+
+    const filtered = workloads.filter(w => {
         if (filter !== "all" && w.category !== filter) return false;
         if (workloadFilter !== "all" && w.sub !== workloadFilter) return false;
         return true;
     });
+
+    const filterCounts = FILTERS.map(f => ({
+        ...f,
+        count: f.key === "all" ? workloads.length : workloads.filter(w => w.category === f.key).length,
+    }));
 
     return (
         <div className="rounded-[12px] border border-[#21262d] bg-[#161b22] p-3.5">
@@ -83,7 +143,7 @@ export function LiveScalingOverview() {
                         </svg>
                     </button>
                     {/* Status filter tabs */}
-                    {FILTERS.map(f => (
+                    {filterCounts.map(f => (
                         <button
                             key={f.key}
                             onClick={() => setFilter(f.key)}

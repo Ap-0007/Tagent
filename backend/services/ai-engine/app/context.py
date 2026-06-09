@@ -1,7 +1,7 @@
 """Context builder — fetches REAL cluster data from Discovery Service.
 
 When Discovery Service is running, this fetches live data.
-When it's not running (local dev without K8s), falls back to mock data.
+When it's not running, returns an explicit "no data" message (no fake data).
 """
 
 import os
@@ -20,11 +20,10 @@ async def fetch_cluster_context() -> str:
                 data = r.json()
                 return format_live_context(data)
         except Exception:
-            # Discovery Service not reachable — fall back to mock
             pass
 
-    # Fallback to mock if Discovery Service is not reachable
-    return MOCK_CONTEXT
+    # Discovery Service is not reachable — return explicit no-data message
+    return NO_DATA_CONTEXT
 
 
 def format_live_context(data: dict) -> str:
@@ -50,7 +49,7 @@ def format_live_context(data: dict) -> str:
             lines.append(f"- {n['name']}: {n['status']}, role={n['role']}, CPU capacity={n['cpu_capacity']}, Memory capacity={n['memory_capacity']}, Pods={n.get('pod_count', '?')}, IP={n.get('internal_ip', '?')}")
         lines.append("")
 
-    # Pods (show first 50 + any failing ones)
+    # Pods (show failing ones + first 30 running)
     pods = data.get("pods", [])
     failing = [p for p in pods if p["status"] not in ("Running", "Succeeded", "Completed")]
     running = [p for p in pods if p["status"] == "Running"]
@@ -79,26 +78,8 @@ def format_live_context(data: dict) -> str:
     return "\n".join(lines)
 
 
-MOCK_CONTEXT = """
-CLUSTER STATE (mock data — Discovery Service not connected):
-- This is mock data. Start the Discovery Service to get real cluster information.
-- Nodes: 6 total, 5 Ready, 1 NotReady (ip-10-0-3-21 disk pressure)
-- Pods: 142 total, 138 Running, 3 CrashLoopBackOff, 1 Pending
-- Deployments: 24 total
-- Services: 31
-
-FAILING PODS:
-- production/checkout-api-7d8f4: CrashLoopBackOff, 14 restarts, node=ip-10-0-2-8
-- production/checkout-api-m4n7q: CrashLoopBackOff, 8 restarts, node=ip-10-0-1-12
-- production/checkout-api-p8r2w: CrashLoopBackOff, 3 restarts, node=ip-10-0-2-8
-
-NODES:
-- ip-10-0-1-12: Ready, worker, CPU 4 cores, Memory 16Gi, 28 pods
-- ip-10-0-2-8: Ready, worker, CPU 4 cores, Memory 16Gi, 34 pods
-- ip-10-0-3-21: NotReady, worker, CPU 4 cores, Memory 16Gi, 0 pods (DISK PRESSURE 91%)
-- ip-10-0-1-5: Ready, worker, CPU 2 cores, Memory 8Gi, 18 pods
-- ip-10-0-2-14: Ready, worker, CPU 2 cores, Memory 8Gi, 14 pods
-- ip-10-0-3-9: Ready, control-plane, CPU 2 cores, Memory 8Gi, 12 pods
-
-NOTE: This is mock data. For real results, ensure Discovery Service is running.
+NO_DATA_CONTEXT = """
+CLUSTER STATE: Discovery Service is not connected.
+No real cluster data is available. I cannot answer questions about specific pods, nodes, or services without live data.
+Please ensure the Discovery Service is running and accessible.
 """

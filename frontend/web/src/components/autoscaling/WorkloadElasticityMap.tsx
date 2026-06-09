@@ -1,8 +1,11 @@
 "use client";
 
+import { useEffect, useState } from "react";
+import { getAutoscaling } from "@/lib/api";
+
 // ─── Workload Elasticity Map (space background + double-ring circles) ────────
 
-const NODES = [
+const FALLBACK_NODES = [
     { label: "API Gateway", ratio: "8 / 10", pressure: "Medium", x: 320, y: 80, color: "#3fb950", ringColor: "#3fb950", r: 42 },
     { label: "Monitoring", ratio: "4 / 4", pressure: "Low", x: 120, y: 200, color: "#58a6ff", ringColor: "#58a6ff", r: 38 },
     { label: "AI Engine", ratio: "3 / 6", pressure: "High", x: 320, y: 240, color: "#f85149", ringColor: "#f85149", r: 52 },
@@ -12,11 +15,66 @@ const NODES = [
     { label: "Web Frontend", ratio: "4 / 8", pressure: "Medium", x: 540, y: 340, color: "#22d3ee", ringColor: "#22d3ee", r: 40 },
 ];
 
-const EDGES = [
+const FALLBACK_EDGES: number[][] = [
     [0, 2], [0, 3], [1, 2], [2, 3], [2, 5], [4, 2], [5, 6], [3, 6],
 ];
 
+function derivePressure(current: number, max: number): "Low" | "Medium" | "High" {
+    const ratio = current / max;
+    if (ratio >= 0.8) return "High";
+    if (ratio >= 0.5) return "Medium";
+    return "Low";
+}
+
+function pressureColor(pressure: string) {
+    if (pressure === "High") return "#f85149";
+    if (pressure === "Medium") return "#f0883e";
+    return "#58a6ff";
+}
+
+const NODE_POSITIONS = [
+    { x: 320, y: 80, r: 42 },
+    { x: 120, y: 200, r: 38 },
+    { x: 320, y: 240, r: 52 },
+    { x: 540, y: 160, r: 40 },
+    { x: 140, y: 380, r: 36 },
+    { x: 340, y: 420, r: 36 },
+    { x: 540, y: 340, r: 40 },
+];
+
 export function WorkloadElasticityMap() {
+    const [nodes, setNodes] = useState<typeof FALLBACK_NODES>([]);
+    const [edges] = useState<number[][]>([]);
+
+    useEffect(() => {
+        let active = true;
+        const fetchData = () => {
+            getAutoscaling()
+                .then((data) => {
+                    if (!active) return;
+                    const mapped = data.hpas.slice(0, 7).map((hpa, i) => {
+                        const pos = NODE_POSITIONS[i] || NODE_POSITIONS[0];
+                        const pressure = derivePressure(hpa.current, hpa.max);
+                        const color = pressureColor(pressure);
+                        return {
+                            label: hpa.name,
+                            ratio: `${hpa.current} / ${hpa.max}`,
+                            pressure,
+                            x: pos.x,
+                            y: pos.y,
+                            color,
+                            ringColor: color,
+                            r: pos.r,
+                        };
+                    });
+                    if (mapped.length > 0) setNodes(mapped);
+                })
+                .catch(() => { });
+        };
+        fetchData();
+        const interval = setInterval(fetchData, 15_000);
+        return () => { active = false; clearInterval(interval); };
+    }, []);
     return (
         <div className="rounded-[12px] border border-[#21262d] bg-[#161b22] p-3.5 relative overflow-hidden">
             {/* Header */}
@@ -90,9 +148,9 @@ export function WorkloadElasticityMap() {
                     </defs>
 
                     {/* Connection lines (red/orange) */}
-                    {EDGES.map(([a, b], i) => {
-                        const from = NODES[a];
-                        const to = NODES[b];
+                    {edges.map(([a, b], i) => {
+                        const from = nodes[a];
+                        const to = nodes[b];
                         const isHigh = from.pressure === "High" || to.pressure === "High";
                         const color = isHigh ? "#f85149" : "#f0883e";
                         return (
@@ -108,9 +166,9 @@ export function WorkloadElasticityMap() {
                         );
                     })}
                     {/* Animated dots on connections */}
-                    {EDGES.slice(0, 5).map(([a, b], i) => {
-                        const from = NODES[a];
-                        const to = NODES[b];
+                    {edges.slice(0, 5).map(([a, b], i) => {
+                        const from = nodes[a];
+                        const to = nodes[b];
                         const color = from.pressure === "High" ? "#f85149" : "#f0883e";
                         return (
                             <circle key={`dot-${i}`} r="2" fill={color} opacity="0.9">
@@ -120,7 +178,7 @@ export function WorkloadElasticityMap() {
                     })}
 
                     {/* Nodes */}
-                    {NODES.map((n, i) => {
+                    {nodes.map((n, i) => {
                         const filterName = n.color === "#f85149" ? "wem-red"
                             : n.color === "#3fb950" ? "wem-green"
                                 : n.color === "#58a6ff" ? "wem-blue"

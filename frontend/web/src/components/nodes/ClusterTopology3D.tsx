@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { getClusterState, type NodeInfo } from "@/lib/api";
 
 // ─── Isometric 3D Cluster Topology ───────────────────────────────────────────
 
@@ -14,7 +15,7 @@ interface Region {
     nodes: Array<{ dx: number; dy: number; dz: number; status: "healthy" | "warning" | "critical" }>;
 }
 
-const REGIONS: Region[] = [
+const regions: Region[] = [
     {
         id: "us-east-1", label: "us-east-1", sublabel: "8 Nodes", cx: 175, cy: 230, color: "#3fb950",
         nodes: [
@@ -72,9 +73,47 @@ export function ClusterTopology3D() {
     const [view, setView] = useState<ViewType>("Traffic View");
     const [zoom, setZoom] = useState(1);
     const [is3D, setIs3D] = useState(true);
+    const [regions, setRegions] = useState<Region[]>([]);
+
+    useEffect(() => {
+        async function load() {
+            try {
+                const state = await getClusterState().catch(() => null);
+                if (state && state.nodes && state.nodes.length > 0) {
+                    // Group nodes by their role or IP prefix as "regions"
+                    const grouped: Record<string, NodeInfo[]> = {};
+                    state.nodes.forEach(n => {
+                        const key = n.role || "default";
+                        if (!grouped[key]) grouped[key] = [];
+                        grouped[key].push(n);
+                    });
+                    const positions = [{ cx: 175, cy: 230 }, { cx: 440, cy: 100 }, { cx: 320, cy: 380 }, { cx: 700, cy: 280 }];
+                    const colors = ["#3fb950", "#3fb950", "#a371f7", "#f0883e"];
+                    const mapped: Region[] = Object.entries(grouped).map(([key, nodes], i) => ({
+                        id: key,
+                        label: key,
+                        sublabel: `${nodes.length} Nodes`,
+                        cx: positions[i % positions.length].cx,
+                        cy: positions[i % positions.length].cy,
+                        color: colors[i % colors.length],
+                        nodes: nodes.map((n, j) => ({
+                            dx: j % 2,
+                            dy: Math.floor(j / 2) % 2,
+                            dz: Math.floor(j / 4),
+                            status: n.status === "Ready" ? "healthy" : "warning",
+                        })),
+                    }));
+                    setRegions(mapped);
+                }
+            } catch { }
+        }
+        load();
+        const interval = setInterval(load, 15000);
+        return () => clearInterval(interval);
+    }, []);
 
     // Data-driven sizing: total nodes determines canvas height
-    const totalNodes = REGIONS.reduce((sum, r) => sum + r.nodes.length, 0);
+    const totalNodes = regions.reduce((sum, r) => sum + r.nodes.length, 0);
     // Compact: 220–300px so topology stays medium-sized
     const dynamicHeight = Math.max(220, Math.min(300, 180 + totalNodes * 4));
 
@@ -173,7 +212,7 @@ export function ClusterTopology3D() {
 
                     <g style={{ transform: `scale(${zoom})`, transformOrigin: "440px 240px", transition: "transform 0.3s" }}>
                         {/* Connection lines from center hub to regions */}
-                        {REGIONS.map((r, i) => {
+                        {regions.map((r, i) => {
                             const isHL = hovered === r.id;
                             const opacity = hovered ? (isHL ? 1 : 0.2) : 0.85;
                             const color = view === "Health View" ? r.color : "#58a6ff";
@@ -203,8 +242,8 @@ export function ClusterTopology3D() {
                             <KubernetesLogo />
                         </g>
 
-                        {/* Regions */}
-                        {REGIONS.map(r => (
+                        {/* regions */}
+                        {regions.map(r => (
                             <g
                                 key={r.id}
                                 onMouseEnter={() => setHovered(r.id)}

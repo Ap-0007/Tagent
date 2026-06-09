@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { getNodes, getMetricsSummary, type NodeInfo, type MetricsSummary } from "@/lib/api";
 import { Dropdown } from "@/components/workload/Dropdown";
 
 // ─── Node Data ───────────────────────────────────────────────────────────────
@@ -23,44 +24,64 @@ interface NodeRow {
     health: { score: number; label: string; description: string; color: string };
 }
 
-const NODES: NodeRow[] = [
-    {
-        name: "ip-10-0-1-23",
-        role: "Worker", roleColor: "#58a6ff",
-        statusDot: "#3fb950", statusBadge: "✓", statusBadgeColor: "#3fb950",
-        instanceType: "m6i.4xlarge", region: "us-east-1a",
-        uptime: "18d 6h 24m", kubelet: "v1.29.3",
-        cpu: { percent: 42, spark: "0,16 12,14 24,15 36,12 48,13 60,10 72,11 84,8 96,9", sparkColor: "#3fb950" },
-        memory: { percent: 68, usage: "21.8 / 32 GB", spark: "0,14 12,12 24,13 36,11 48,12 60,10 72,11 84,9 96,10", sparkColor: "#a371f7" },
-        disk: { read: "1.2k", readIops: "98 Mbps", write: "870", writeIops: "Write IOPS" },
-        pods: { count: 32, capacity: 80 },
-        health: { score: 96, label: "Excellent", description: "Node is healthy and performing optimally.", color: "#3fb950" },
-    },
-    {
-        name: "ip-10-0-2-15",
-        role: "Worker", roleColor: "#58a6ff",
-        statusDot: "#f0883e", statusBadge: "!", statusBadgeColor: "#f0883e",
-        instanceType: "m6i.4xlarge", region: "us-east-1b",
-        uptime: "12d 3h 11m", kubelet: "v1.29.3",
-        cpu: { percent: 78, spark: "0,12 12,10 24,11 36,8 48,9 60,6 72,7 84,4 96,5", sparkColor: "#f0883e" },
-        memory: { percent: 82, usage: "26.3 / 32 GB", spark: "0,10 12,9 24,10 36,7 48,8 60,5 72,6 84,3 96,4", sparkColor: "#f85149" },
-        disk: { read: "2.8k", readIops: "150 Mbps", write: "1.9k", writeIops: "Write IOPS" },
-        pods: { count: 38, capacity: 95 },
-        health: { score: 72, label: "Warning", description: "High CPU usage identified.", color: "#f0883e" },
-    },
-    {
-        name: "ip-10-0-3-47",
-        role: "System", roleColor: "#a371f7",
-        statusDot: "#3fb950", statusBadge: "✓", statusBadgeColor: "#3fb950",
-        instanceType: "m6i.2xlarge", region: "eu-central-1a",
-        uptime: "25d 14h 9m", kubelet: "v1.29.3",
-        cpu: { percent: 24, spark: "0,17 12,16 24,17 36,15 48,16 60,14 72,15 84,13 96,14", sparkColor: "#3fb950" },
-        memory: { percent: 45, usage: "14.2 / 32 GB", spark: "0,14 12,13 24,14 36,12 48,13 60,11 72,12 84,10 96,11", sparkColor: "#3fb950" },
-        disk: { read: "78", readIops: "64 Mbps", write: "420", writeIops: "Write IOPS" },
-        pods: { count: 18, capacity: 45 },
-        health: { score: 91, label: "Excellent", description: "Stable node with low resource usage.", color: "#3fb950" },
-    },
-];
+function generateSparkFromPercent(percent: number): string {
+    const points: string[] = [];
+    let y = 18 - (percent / 100) * 16;
+    for (let x = 0; x <= 96; x += 12) {
+        y = Math.max(2, Math.min(18, y + (Math.random() * 4 - 2)));
+        points.push(`${x},${Math.round(y)}`);
+    }
+    return points.join(" ");
+}
+
+function parseMemoryToGB(mem: string): number {
+    if (!mem) return 0;
+    if (mem.endsWith("Gi")) return parseFloat(mem);
+    if (mem.endsWith("Mi")) return parseFloat(mem) / 1024;
+    if (mem.endsWith("Ki")) return parseFloat(mem) / (1024 * 1024);
+    return parseFloat(mem) / (1024 * 1024 * 1024);
+}
+
+function mapNodeInfoToRow(node: NodeInfo, nodeMetric: { cpu_percent: number; memory_percent: number; disk_percent: number } | undefined): NodeRow {
+    const isReady = node.status === "Ready";
+    const isSystem = node.role.toLowerCase().includes("master") || node.role.toLowerCase().includes("control");
+    const cpuPercent = nodeMetric?.cpu_percent ?? 0;
+    const memPercent = nodeMetric?.memory_percent ?? 0;
+    const memCapGB = parseMemoryToGB(node.memory_capacity);
+    const memUsedGB = memCapGB * (memPercent / 100);
+    const podCapacity = parseInt(node.pod_capacity) || 0;
+    const podPercent = podCapacity > 0 ? Math.round((node.pod_count / podCapacity) * 100) : 0;
+
+    const cpuColor = cpuPercent >= 80 ? "#f85149" : cpuPercent >= 60 ? "#f0883e" : "#3fb950";
+    const memColor = memPercent >= 80 ? "#f85149" : memPercent >= 60 ? "#f0883e" : "#3fb950";
+
+    // Health score derived from CPU + memory + status
+    const healthScore = isReady ? Math.max(0, Math.round(100 - (cpuPercent * 0.3 + memPercent * 0.3))) : 40;
+    const healthLabel = healthScore >= 90 ? "Excellent" : healthScore >= 70 ? "Good" : healthScore >= 50 ? "Warning" : "Critical";
+    const healthColor = healthScore >= 90 ? "#3fb950" : healthScore >= 70 ? "#58a6ff" : healthScore >= 50 ? "#f0883e" : "#f85149";
+    const healthDesc = healthScore >= 90 ? "Node is healthy and performing optimally."
+        : healthScore >= 70 ? "Node is performing well."
+            : healthScore >= 50 ? "High resource usage identified."
+                : "Node needs immediate attention.";
+
+    return {
+        name: node.name,
+        role: isSystem ? "System" : "Worker",
+        roleColor: isSystem ? "#a371f7" : "#58a6ff",
+        statusDot: isReady ? "#3fb950" : "#f85149",
+        statusBadge: isReady ? "✓" : "!",
+        statusBadgeColor: isReady ? "#3fb950" : "#f85149",
+        instanceType: "—",
+        region: node.internal_ip || "—",
+        uptime: node.age || "—",
+        kubelet: "—",
+        cpu: { percent: cpuPercent, spark: generateSparkFromPercent(cpuPercent), sparkColor: cpuColor },
+        memory: { percent: memPercent, usage: `${memUsedGB.toFixed(1)} / ${memCapGB.toFixed(0)} GB`, spark: generateSparkFromPercent(memPercent), sparkColor: memColor },
+        disk: { read: "—", readIops: "—", write: "—", writeIops: "—" },
+        pods: { count: node.pod_count, capacity: podPercent },
+        health: { score: healthScore, label: healthLabel, description: healthDesc, color: healthColor },
+    };
+}
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
@@ -70,8 +91,31 @@ export function KubernetesNodesTable() {
     const [status, setStatus] = useState("all");
     const [role, setRole] = useState("all");
     const [view, setView] = useState<"list" | "grid">("list");
+    const [nodeRows, setNodeRows] = useState<NodeRow[]>([]);
 
-    const filtered = NODES.filter(n => {
+    useEffect(() => {
+        async function load() {
+            try {
+                const [nodes, metrics] = await Promise.all([
+                    getNodes().catch(() => []),
+                    getMetricsSummary().catch(() => null),
+                ]);
+                const nodeMetrics = metrics?.node_metrics || [];
+                const rows = (nodes || []).map((n: NodeInfo) => {
+                    const metric = nodeMetrics.find(m => m.node === n.name);
+                    return mapNodeInfoToRow(n, metric);
+                });
+                setNodeRows(rows);
+            } catch { }
+        }
+        load();
+        const interval = setInterval(load, 15000);
+        return () => clearInterval(interval);
+    }, []);
+
+    const regions = ["all", ...Array.from(new Set(nodeRows.map(n => n.region).filter(r => r !== "—")))];
+
+    const filtered = nodeRows.filter(n => {
         if (search && !n.name.toLowerCase().includes(search.toLowerCase())) return false;
         if (region !== "all" && n.region !== region) return false;
         if (status !== "all" && n.statusBadgeColor !== (status === "healthy" ? "#3fb950" : status === "warning" ? "#f0883e" : "#f85149")) return false;
@@ -102,9 +146,7 @@ export function KubernetesNodesTable() {
                         value={region}
                         options={[
                             { value: "all", label: "All Regions" },
-                            { value: "us-east-1a", label: "us-east-1a" },
-                            { value: "us-east-1b", label: "us-east-1b" },
-                            { value: "eu-central-1a", label: "eu-central-1a" },
+                            ...regions.filter(r => r !== "all").map(r => ({ value: r, label: r })),
                         ]}
                         onChange={setRegion}
                         width={160}

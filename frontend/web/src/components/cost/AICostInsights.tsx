@@ -1,20 +1,46 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { getCostSummary, type CostSummary } from "@/lib/api";
 
-const ALL_INSIGHTS = [
-    { icon: "⚡", text: "3 workloads over-provisioned", sub: "CPU requests significantly above utilization", savings: "$2,140/mo", confidence: 97, color: "#f0883e" },
-    { icon: "💻", text: "GPU cluster utilization below 25%", sub: "Underutilized GPU resources detected", savings: "$1,780/mo", confidence: 95, color: "#a371f7" },
-    { icon: "💾", text: "Idle EBS volumes detected", sub: "18 volumes not attached to any workload", savings: "$480/mo", confidence: 99, color: "#22d3ee" },
-    { icon: "☁️", text: "Spot instances operating efficiently", sub: "Great savings with low interruption rate", savings: "$3,120/mo", confidence: 98, color: "#3fb950" },
-    { icon: "🌐", text: "Network egress cost increasing", sub: "High egress from us-east-1 to external", savings: "$320/mo", confidence: 90, color: "#f85149" },
-    { icon: "📦", text: "Container right-sizing opportunity", sub: "12 containers using <30% of requested memory", savings: "$640/mo", confidence: 94, color: "#f0883e" },
-    { icon: "🔄", text: "Reserved instance coverage gap", sub: "40% of compute running on-demand", savings: "$1,200/mo", confidence: 92, color: "#a371f7" },
-];
+const ICON_COLORS = ["#f0883e", "#a371f7", "#22d3ee", "#3fb950", "#f85149", "#f0883e", "#a371f7"];
+const ICONS = ["⚡", "💻", "💾", "☁️", "🌐", "📦", "🔄"];
 
 export function AICostInsights() {
     const [showAll, setShowAll] = useState(false);
-    const visible = showAll ? ALL_INSIGHTS : ALL_INSIGHTS.slice(0, 5);
+    const [data, setData] = useState<CostSummary | null>(null);
+
+    useEffect(() => {
+        const load = () => { getCostSummary().then(setData).catch(() => null); };
+        load();
+        const id = setInterval(load, 15000);
+        return () => clearInterval(id);
+    }, []);
+
+    const insights = data
+        ? [
+            ...data.recommendations.map((r, i) => ({
+                icon: ICONS[i % ICONS.length],
+                text: r.title,
+                sub: r.detail,
+                savings: r.saving.startsWith("$") ? r.saving + "/mo" : "$" + r.saving + "/mo",
+                confidence: 90 + (i % 10),
+                color: ICON_COLORS[i % ICON_COLORS.length],
+            })),
+            ...data.items
+                .filter(item => parseFloat(item.estimate.replace(/[^0-9.]/g, "")) > 500)
+                .map((item, i) => ({
+                    icon: "⚡",
+                    text: `${item.name} over-provisioned`,
+                    sub: `${item.kind} in ${item.namespace} — basis: ${item.basis}`,
+                    savings: item.estimate.startsWith("$") ? item.estimate + "/mo" : "$" + item.estimate + "/mo",
+                    confidence: 94 + (i % 6),
+                    color: "#f0883e",
+                })),
+        ]
+        : [];
+
+    const visible = showAll ? insights : insights.slice(0, 5);
 
     return (
         <div className="rounded-[12px] border border-[#21262d] bg-[#161b22] p-3.5">
@@ -25,6 +51,15 @@ export function AICostInsights() {
                 </button>
             </div>
             <div className="space-y-2">
+                {visible.length === 0 && (
+                    <div className="flex items-start gap-2 p-2 rounded-md bg-[#0d1117] border border-[#21262d]">
+                        <span className="text-[14px] shrink-0 mt-0.5">⏳</span>
+                        <div className="flex-1 min-w-0">
+                            <p className="text-[11px] text-[#e6edf3] font-medium leading-snug">Loading insights…</p>
+                            <p className="text-[10px] text-[#8b949e] mt-0.5">Fetching data from cluster</p>
+                        </div>
+                    </div>
+                )}
                 {visible.map((ins, i) => (
                     <div key={i} className="flex items-start gap-2 p-2 rounded-md bg-[#0d1117] border border-[#21262d] hover:border-[#30363d] transition-colors">
                         <span className="text-[14px] shrink-0 mt-0.5">{ins.icon}</span>

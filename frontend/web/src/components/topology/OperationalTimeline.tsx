@@ -1,16 +1,46 @@
 "use client";
 
+import { useEffect, useState } from "react";
+import { getRecentEvents, type StreamEvent } from "@/lib/api";
+
 // ─── Operational Timeline (bottom-left) ──────────────────────────────────────
 
-const EVENTS = [
-    { time: "12:31", label: "Anomaly Detected", desc: "High error rate in PostgreSQL", color: "#f85149", icon: "alert" },
-    { time: "12:32", label: "Root Cause Identified", desc: "AI analysis completed. Confidence 94%", color: "#f0883e", icon: "search" },
-    { time: "12:33", label: "Remediation Suggested", desc: "Scale connection pool from 20 to 50", color: "#a371f7", icon: "sparkle" },
-    { time: "12:35", label: "Remediation Executed", desc: "Connection pool scaled automatically", color: "#3fb950", icon: "check", active: true },
-    { time: "12:36", label: "Recovery Confirmed", desc: "Error rate back to normal", color: "#3fb950", icon: "shield" },
-];
+interface TimelineEvent {
+    time: string;
+    label: string;
+    desc: string;
+    color: string;
+    icon: string;
+    active?: boolean;
+}
+
+function deriveTimelineEvents(events: StreamEvent[]): TimelineEvent[] {
+    if (events.length === 0) return [];
+    return events.slice(0, 5).map((e, i) => {
+        const time = new Date(e.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
+        const color = e.severity === "critical" || e.severity === "error" ? "#f85149"
+            : e.severity === "warning" ? "#f0883e"
+                : e.severity === "success" ? "#3fb950" : "#a371f7";
+        const icon = e.severity === "critical" ? "alert" : e.severity === "warning" ? "search" : i === events.length - 1 ? "shield" : "check";
+        return { time, label: e.title || e.type, desc: e.detail || e.source, color, icon, active: i === 0 };
+    });
+}
 
 export function OperationalTimeline() {
+    const [events, setEvents] = useState<TimelineEvent[]>([]);
+
+    useEffect(() => {
+        async function load() {
+            try {
+                const data = await getRecentEvents().catch(() => ({ events: [], total: 0 }));
+                const derived = deriveTimelineEvents(data.events || []);
+                setEvents(derived);
+            } catch { }
+        }
+        load();
+        const interval = setInterval(load, 15000);
+        return () => clearInterval(interval);
+    }, []);
     return (
         <div className="rounded-[12px] border border-[#21262d] bg-[#161b22] p-4">
             {/* Header */}
@@ -42,7 +72,7 @@ export function OperationalTimeline() {
 
             {/* Event cards */}
             <div className="flex items-start gap-3 overflow-x-auto pb-1">
-                {EVENTS.map((ev, i) => (
+                {events.map((ev, i) => (
                     <div key={i} className={`shrink-0 w-[140px] rounded-md p-2.5 border ${ev.active ? "bg-[#3fb950]/5 border-[#3fb950]/30" : "bg-[#0d1117] border-[#21262d]"}`}>
                         <div className="flex items-center gap-1.5 mb-1">
                             <EventIcon icon={ev.icon} color={ev.color} />

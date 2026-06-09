@@ -262,10 +262,69 @@ func main() {
 	router.POST("/api/v1/plugins/analyze", proxyPost(aiEngineURL, "/api/v1/plugins/analyze"))
 	router.POST("/api/v1/plugins/action", proxyPost(aiEngineURL, "/api/v1/plugins/action"))
 
+	// ===== AI Model Management (served by AI Engine) =====
+	router.GET("/api/v1/models/catalog", proxyGet(aiEngineURL, "/api/v1/models/catalog"))
+	router.GET("/api/v1/models/installed", proxyGet(aiEngineURL, "/api/v1/models/installed"))
+	router.GET("/api/v1/models/active", proxyGet(aiEngineURL, "/api/v1/models/active"))
+	router.POST("/api/v1/models/pull", proxyPost(aiEngineURL, "/api/v1/models/pull"))
+	router.GET("/api/v1/models/pull/status/*modelPath", func(c *gin.Context) {
+		modelPath := strings.TrimPrefix(c.Param("modelPath"), "/")
+		resp, err := http.Get(aiEngineURL + "/api/v1/models/pull/status/" + modelPath)
+		if err != nil {
+			c.JSON(502, gin.H{"error": "upstream unreachable"})
+			return
+		}
+		defer resp.Body.Close()
+		body, _ := io.ReadAll(resp.Body)
+		c.Data(resp.StatusCode, "application/json", body)
+	})
+	router.POST("/api/v1/models/switch", proxyPost(aiEngineURL, "/api/v1/models/switch"))
+	router.DELETE("/api/v1/models/delete", func(c *gin.Context) {
+		reqBody, _ := io.ReadAll(c.Request.Body)
+		req, _ := http.NewRequest(http.MethodDelete, aiEngineURL+"/api/v1/models/delete", strings.NewReader(string(reqBody)))
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			c.JSON(502, gin.H{"error": "upstream unreachable"})
+			return
+		}
+		defer resp.Body.Close()
+		body, _ := io.ReadAll(resp.Body)
+		c.Data(resp.StatusCode, "application/json", body)
+	})
+	router.POST("/api/v1/models/cloud/key", proxyPost(aiEngineURL, "/api/v1/models/cloud/key"))
+	router.GET("/api/v1/models/cloud/keys", proxyGet(aiEngineURL, "/api/v1/models/cloud/keys"))
+	router.DELETE("/api/v1/models/cloud/key/:provider", func(c *gin.Context) {
+		req, _ := http.NewRequest(http.MethodDelete, aiEngineURL+"/api/v1/models/cloud/key/"+c.Param("provider"), nil)
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			c.JSON(502, gin.H{"error": "upstream unreachable"})
+			return
+		}
+		defer resp.Body.Close()
+		body, _ := io.ReadAll(resp.Body)
+		c.Data(resp.StatusCode, "application/json", body)
+	})
+
 	// ===== Monitoring =====
 	router.GET("/api/v1/metrics/summary", proxyGet(monitoringURL, "/summary"))
 	router.GET("/api/v1/metrics/cpu", proxyGet(monitoringURL, "/metrics/cpu"))
 	router.GET("/api/v1/metrics/memory", proxyGet(monitoringURL, "/metrics/memory"))
+	router.GET("/api/v1/metrics/network", proxyGet(monitoringURL, "/metrics/network"))
+	router.GET("/api/v1/metrics/traffic", proxyGet(monitoringURL, "/metrics/traffic"))
+	router.POST("/api/v1/logs/search", proxyPost(monitoringURL, "/logs/search"))
+	router.GET("/api/v1/traces", proxyGetWithQuery(monitoringURL, "/traces"))
+	router.GET("/api/v1/traces/services", proxyGet(monitoringURL, "/traces/services"))
+	router.GET("/api/v1/traces/:id", func(c *gin.Context) {
+		resp, err := http.Get(monitoringURL + "/traces/" + c.Param("id"))
+		if err != nil {
+			c.JSON(502, gin.H{"error": "upstream unreachable"})
+			return
+		}
+		defer resp.Body.Close()
+		body, _ := io.ReadAll(resp.Body)
+		c.Data(resp.StatusCode, "application/json", body)
+	})
 
 	// ===== Notification =====
 	notificationURL := envOr("NOTIFICATION_URL", "http://localhost:8085")

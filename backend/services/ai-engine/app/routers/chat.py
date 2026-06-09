@@ -84,5 +84,5 @@ async def chat(request: ChatRequest):
     return ChatResponse(
         response=answer,
         model=provider.model,
-        context_source="live" if "CLUSTER STATE" not in context else "mock",
+        context_source="live" if "live scan" in context else "no-data",
     )

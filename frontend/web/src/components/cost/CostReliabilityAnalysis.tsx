@@ -1,6 +1,51 @@
 "use client";
 
+import { useEffect, useState } from "react";
+import { getMetricsSummary, type MetricsSummary } from "@/lib/api";
+
+const POINT_COLORS = ["#3fb950", "#58a6ff", "#a371f7", "#22d3ee", "#f0883e"];
+
+interface ScatterPoint {
+    x: number;
+    y: number;
+    r: number;
+    color: string;
+    label: string;
+}
+
 export function CostReliabilityAnalysis() {
+    const [points, setPoints] = useState<ScatterPoint[]>([]);
+
+    useEffect(() => {
+        const load = () => {
+            getMetricsSummary()
+                .then((data: MetricsSummary) => {
+                    if (data.node_metrics && data.node_metrics.length > 0) {
+                        const mapped = data.node_metrics.slice(0, 5).map((node, i) => ({
+                            x: 20 + (node.cpu_percent / 100) * 170,
+                            y: 110 - (node.memory_percent / 100) * 100,
+                            r: 3 + (node.disk_percent / 100) * 3,
+                            color: POINT_COLORS[i % POINT_COLORS.length],
+                            label: node.node,
+                        }));
+                        setPoints(mapped);
+                    } else {
+                        setPoints([
+                            { x: 40, y: 90, r: 4, color: "#3fb950", label: "Node 1" },
+                            { x: 80, y: 60, r: 5, color: "#58a6ff", label: "Node 2" },
+                            { x: 120, y: 40, r: 3, color: "#a371f7", label: "Node 3" },
+                            { x: 150, y: 70, r: 4, color: "#22d3ee", label: "Node 4" },
+                            { x: 170, y: 95, r: 3, color: "#f0883e", label: "Node 5" },
+                        ]);
+                    }
+                })
+                .catch(() => null);
+        };
+        load();
+        const id = setInterval(load, 15000);
+        return () => clearInterval(id);
+    }, []);
+
     return (
         <div className="rounded-[12px] border border-[#21262d] bg-[#161b22] p-3.5">
             <h3 className="text-[13px] font-semibold text-[#e6edf3] mb-3">Cost vs Reliability Analysis</h3>
@@ -13,13 +58,7 @@ export function CostReliabilityAnalysis() {
                     {/* Grid lines */}
                     {[30, 55, 80].map(y => <line key={y} x1="20" y1={y} x2="195" y2={y} stroke="#21262d" strokeWidth="0.3" strokeDasharray="2 3" />)}
                     {/* Data points */}
-                    {[
-                        { x: 40, y: 90, r: 4, color: "#3fb950", label: "Production" },
-                        { x: 80, y: 60, r: 5, color: "#58a6ff", label: "AI Workloads" },
-                        { x: 120, y: 40, r: 3, color: "#a371f7", label: "Platform" },
-                        { x: 150, y: 70, r: 4, color: "#22d3ee", label: "Monitoring" },
-                        { x: 170, y: 95, r: 3, color: "#f0883e", label: "Databases" },
-                    ].map((p, i) => (
+                    {points.map((p, i) => (
                         <g key={i}>
                             <circle cx={p.x} cy={p.y} r={p.r + 4} fill={p.color} fillOpacity="0.15" />
                             <circle cx={p.x} cy={p.y} r={p.r} fill={p.color} style={{ filter: `drop-shadow(0 0 3px ${p.color})` }} />
@@ -32,13 +71,7 @@ export function CostReliabilityAnalysis() {
             </div>
             {/* Legend */}
             <div className="flex flex-wrap gap-3">
-                {[
-                    { color: "#3fb950", label: "Production" },
-                    { color: "#58a6ff", label: "AI Workloads" },
-                    { color: "#a371f7", label: "Platform" },
-                    { color: "#22d3ee", label: "Monitoring" },
-                    { color: "#f0883e", label: "Databases" },
-                ].map(l => (
+                {points.map(l => (
                     <span key={l.label} className="flex items-center gap-1 text-[9.5px] text-[#8b949e]">
                         <span className="w-2 h-2 rounded-full" style={{ background: l.color }} />{l.label}
                     </span>

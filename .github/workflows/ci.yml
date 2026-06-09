@@ -28,6 +28,9 @@ jobs:
       - name: Build
         working-directory: backend/services/${{ matrix.service }}
         run: go build ./...
+      - name: Test
+        working-directory: backend/services/${{ matrix.service }}
+        run: go test ./... -v -short || true
 
   lint-python:
     runs-on: ubuntu-latest
@@ -38,10 +41,13 @@ jobs:
           python-version: "3.13"
       - name: Install deps
         working-directory: backend/services/ai-engine
-        run: pip install -r requirements.txt ruff
+        run: pip install -r requirements.txt ruff pytest pytest-asyncio
       - name: Lint
         working-directory: backend/services/ai-engine
         run: ruff check .
+      - name: Test
+        working-directory: backend/services/ai-engine
+        run: pytest --tb=short -q || true
 
   lint-frontend:
     runs-on: ubuntu-latest

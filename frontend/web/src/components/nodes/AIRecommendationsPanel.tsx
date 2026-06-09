@@ -1,5 +1,18 @@
 "use client";
 
+import { useEffect, useState } from "react";
+import { getRiskSummary, getRiskPredictions, type RiskSummaryResponse, type RiskPrediction } from "@/lib/api";
+
+function generateSparkFromSeed(seed: number): string {
+    const points: string[] = [];
+    let y = 12;
+    for (let x = 0; x <= 96; x += 8) {
+        y = Math.max(2, Math.min(18, y + ((seed * (x + 1) * 31 + 7) % 7) - 3));
+        points.push(`${x},${y}`);
+    }
+    return points.join(" ");
+}
+
 // ─── AI Recommendations Sidebar ──────────────────────────────────────────────
 
 interface Rec {
@@ -67,6 +80,45 @@ const RECS: Rec[] = [
 ];
 
 export function AIRecommendationsPanel() {
+    const [recs, setRecs] = useState<Rec[]>([]);
+
+    useEffect(() => {
+        async function load() {
+            try {
+                const [riskData, predictions] = await Promise.all([
+                    getRiskSummary().catch(() => null),
+                    getRiskPredictions().catch(() => ({ predictions: [], total: 0 })),
+                ]);
+                const derived: Rec[] = [];
+                const preds = predictions.predictions || [];
+
+                for (const pred of preds.slice(0, 4)) {
+                    const prob = pred.probability;
+                    const color = prob > 0.7 ? "#f85149" : prob > 0.4 ? "#f0883e" : "#3fb950";
+                    derived.push({
+                        icon: prob > 0.7 ? "scale" : prob > 0.4 ? "drain" : "resize",
+                        iconColor: color,
+                        iconBg: `${color}26`,
+                        title: pred.preventive_action.length > 25 ? pred.preventive_action.slice(0, 23) + "…" : pred.preventive_action,
+                        badge: prob > 0.7 ? "Critical" : prob > 0.4 ? "Recommended" : "Proactive",
+                        badgeColor: color,
+                        badgeBg: `${color}26`,
+                        description: `${pred.service}: ${pred.predicted_issue}`,
+                        impactLabel: "Impact",
+                        impactValue: pred.time_horizon,
+                        impactColor: color,
+                        confidence: Math.round(pred.probability * 100),
+                        sparkColor: color,
+                        sparkPoints: generateSparkFromSeed(derived.length),
+                    });
+                }
+                setRecs(derived);
+            } catch { }
+        }
+        load();
+        const interval = setInterval(load, 15000);
+        return () => clearInterval(interval);
+    }, []);
     return (
         <div className="rounded-[12px] border border-[#21262d] bg-[#161b22] flex flex-col overflow-hidden">
             {/* Header */}
@@ -81,7 +133,7 @@ export function AIRecommendationsPanel() {
             {/* Recommendations */}
             <div className="px-3 py-3">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
-                    {RECS.map((rec, i) => (
+                    {recs.map((rec, i) => (
                         <RecCard key={i} rec={rec} />
                     ))}
                 </div>

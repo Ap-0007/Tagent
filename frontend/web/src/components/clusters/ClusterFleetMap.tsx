@@ -63,7 +63,7 @@ const STATUS_ICON: Record<string, { bg: string; border: string; icon: string }> 
 
 export function ClusterFleetMap() {
     const [hovered, setHovered] = useState<string | null>(null);
-    const [clusters, setClusters] = useState<ClusterCard[]>(FALLBACK_CLUSTERS);
+    const [clusters, setClusters] = useState<ClusterCard[]>([]);
 
     useEffect(() => {
         async function load() {

@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Dropdown, MultiSelectDropdown } from "./Dropdown";
+import { getPods, getMetricsSummary, type PodInfo, type MetricsSummary } from "@/lib/api";
 
 // ─── Pod Data ────────────────────────────────────────────────────────────────
 
@@ -18,80 +19,52 @@ interface Pod {
     aiAnalysis: { text: string; color: string; confidence: number; icon?: "refresh" };
 }
 
-const PODS: Pod[] = [
-    {
-        name: "api-gateway-7d5f9c8d6f-2k8li",
+function mapPodToRow(p: PodInfo): Pod {
+    const cpuUsed = parseFloat(p.cpu_used) || 0;
+    const memUsed = parseFloat(p.memory_used) || 0;
+    const cpuReq = parseFloat(p.cpu_request) || 1;
+    const memReq = parseFloat(p.memory_request) || 1;
+    const cpuPercent = cpuReq > 0 ? Math.round((cpuUsed / cpuReq) * 100) : 0;
+    const memPercent = memReq > 0 ? Math.round((memUsed / memReq) * 100) : 0;
+
+    const cpuColor = cpuPercent > 80 ? "#f85149" : cpuPercent > 60 ? "#f0883e" : "#3fb950";
+    const memColor = memPercent > 80 ? "#f85149" : memPercent > 60 ? "#f0883e" : "#3fb950";
+
+    const healthScore = Math.max(0, 100 - (p.restarts * 5) - (cpuPercent > 80 ? 20 : 0) - (memPercent > 80 ? 15 : 0) - (p.status !== "Running" ? 40 : 0));
+    const risk: Pod["risk"] = healthScore >= 80 ? "Low" : healthScore >= 60 ? "Medium" : healthScore >= 40 ? "High" : "Critical";
+
+    const status: Pod["status"] = p.status === "Running" ? "Running" : p.status === "Pending" ? "Pending" : "Restarting";
+
+    let aiText = "Stable";
+    let aiColor = "#3fb950";
+    let aiConfidence = 94;
+    if (p.restarts > 5) { aiText = "CrashLoopBackOff"; aiColor = "#f85149"; aiConfidence = 89; }
+    else if (cpuPercent > 80) { aiText = "High CPU pressure"; aiColor = "#f85149"; aiConfidence = 87; }
+    else if (memPercent > 75) { aiText = "Memory growing fast"; aiColor = "#f0883e"; aiConfidence = 91; }
+    else if (p.status === "Pending") { aiText = "Pending"; aiColor = "#f0883e"; aiConfidence = 92; }
+
+    return {
+        name: p.name,
         type: "Deployment",
-        namespace: "default",
-        status: "Running",
-        cpu: { percent: "82%", cores: "1.2 cores", spark: [4, 6, 5, 8, 7, 10, 9, 12, 11, 13], color: "#3fb950" },
-        memory: { percent: "72%", size: "1.3 GiB", spark: [8, 8, 9, 8, 9, 9, 8, 9, 9, 10], color: "#3fb950" },
-        restarts: { count: 0, bars: [3, 5, 4, 6, 5, 7, 6, 8], color: "#3fb950" },
-        healthScore: 96,
-        risk: "Low",
-        aiAnalysis: { text: "Stable ↑", color: "#3fb950", confidence: 96 },
-    },
-    {
-        name: "user-service-5b7d6f9c7f-xm3le",
-        type: "Deployment",
-        namespace: "default",
-        status: "Running",
-        cpu: { percent: "64%", cores: "0.9 cores", spark: [5, 6, 7, 6, 8, 7, 8, 9, 8, 9], color: "#3fb950" },
-        memory: { percent: "85%", size: "1.9 GiB", spark: [4, 6, 7, 9, 10, 11, 12, 13, 14, 15], color: "#f0883e" },
-        restarts: { count: 2, bars: [3, 4, 5, 4, 6, 5, 7, 6], color: "#f0883e" },
-        healthScore: 78,
-        risk: "Medium",
-        aiAnalysis: { text: "Memory growing fast", color: "#f0883e", confidence: 91 },
-    },
-    {
-        name: "order-service-6c8d7e9f2a-vk9pm",
-        type: "Deployment",
-        namespace: "default",
-        status: "Running",
-        cpu: { percent: "48%", cores: "0.7 cores", spark: [6, 5, 7, 6, 8, 7, 6, 7, 8, 7], color: "#3fb950" },
-        memory: { percent: "61%", size: "1.1 GiB", spark: [7, 7, 8, 7, 8, 8, 8, 8, 9, 8], color: "#3fb950" },
-        restarts: { count: 0, bars: [4, 5, 4, 6, 5, 6, 5, 6], color: "#3fb950" },
-        healthScore: 94,
-        risk: "Low",
-        aiAnalysis: { text: "Stable", color: "#3fb950", confidence: 94 },
-    },
-    {
-        name: "payment-svc-9b3e7f1a4d-pl4xc",
-        type: "Deployment",
-        namespace: "payments",
-        status: "Running",
-        cpu: { percent: "89%", cores: "1.6 cores", spark: [8, 10, 11, 12, 13, 12, 14, 13, 14, 15], color: "#f85149" },
-        memory: { percent: "74%", size: "1.4 GiB", spark: [7, 8, 8, 9, 9, 9, 10, 9, 10, 10], color: "#f0883e" },
-        restarts: { count: 5, bars: [6, 8, 7, 10, 9, 11, 12, 14], color: "#f85149" },
-        healthScore: 62,
-        risk: "High",
-        aiAnalysis: { text: "High CPU pressure", color: "#f85149", confidence: 87 },
-    },
-    {
-        name: "notification-svc-7f9e2c3b1d-wn7yz",
-        type: "Deployment",
-        namespace: "default",
-        status: "Pending",
-        cpu: { percent: "—", cores: "Scheduling...", spark: [], color: "#6e7681" },
-        memory: { percent: "—", size: "—", spark: [], color: "#6e7681" },
-        restarts: { count: 0, bars: [0, 0, 0, 0, 0, 0, 0, 0], color: "#484f58" },
-        healthScore: 32,
-        risk: "Critical",
-        aiAnalysis: { text: "Pending >2m", color: "#f0883e", confidence: 92, icon: "refresh" },
-    },
-    {
-        name: "worker-job-4d8f1a3c7e-mn5kp",
-        type: "Job",
-        namespace: "batch",
-        status: "Restarting",
-        cpu: { percent: "23%", cores: "0.3 cores", spark: [5, 8, 4, 9, 3, 10, 2, 11, 1, 12], color: "#f85149" },
-        memory: { percent: "35%", size: "512 MiB", spark: [6, 5, 6, 5, 6, 5, 6, 5, 6, 5], color: "#f85149" },
-        restarts: { count: 7, bars: [12, 14, 11, 15, 13, 16, 14, 18], color: "#f85149" },
-        healthScore: 41,
-        risk: "High",
-        aiAnalysis: { text: "CrashLoopBackOff", color: "#f85149", confidence: 89 },
-    },
-];
+        namespace: p.namespace,
+        status,
+        cpu: { percent: `${cpuPercent}%`, cores: p.cpu_used || "—", spark: generateSpark(cpuPercent), color: cpuColor },
+        memory: { percent: `${memPercent}%`, size: p.memory_used || "—", spark: generateSpark(memPercent), color: memColor },
+        restarts: { count: p.restarts, bars: generateBars(p.restarts), color: p.restarts > 3 ? "#f85149" : p.restarts > 0 ? "#f0883e" : "#3fb950" },
+        healthScore,
+        risk,
+        aiAnalysis: { text: aiText, color: aiColor, confidence: aiConfidence },
+    };
+}
+
+function generateSpark(value: number): number[] {
+    const base = Math.max(2, Math.floor(value / 10));
+    return Array.from({ length: 10 }, (_, i) => Math.max(1, base + ((i * 3 + value) % 5) - 2));
+}
+
+function generateBars(restarts: number): number[] {
+    return Array.from({ length: 8 }, (_, i) => Math.max(1, Math.min(18, restarts + ((i * 7 + 3) % 6))));
+}
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
@@ -114,10 +87,25 @@ export function WorkloadExplorer() {
     const [groupBy, setGroupBy] = useState("none");
     const [view, setView] = useState<"list" | "grid">("list");
     const [visibleCols, setVisibleCols] = useState<string[]>(ALL_COLUMNS.map(c => c.value));
+    const [podRows, setPodRows] = useState<Pod[]>([]);
 
-    const namespaces = Array.from(new Set(PODS.map(p => p.namespace)));
+    useEffect(() => {
+        async function load() {
+            try {
+                const pods = await getPods().catch(() => []);
+                if (pods.length > 0) {
+                    setPodRows(pods.map(mapPodToRow));
+                }
+            } catch { }
+        }
+        load();
+        const interval = setInterval(load, 15000);
+        return () => clearInterval(interval);
+    }, []);
 
-    const filtered = PODS.filter(p => {
+    const namespaces = Array.from(new Set(podRows.map(p => p.namespace)));
+
+    const filtered = podRows.filter(p => {
         if (search && !p.name.toLowerCase().includes(search.toLowerCase())) return false;
         if (namespace !== "all" && p.namespace !== namespace) return false;
         if (status !== "all" && p.status.toLowerCase() !== status) return false;

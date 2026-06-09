@@ -1,14 +1,65 @@
 "use client";
 
+import { useEffect, useState } from "react";
+import { getMetricsSummary, getNetworkMetrics, type MetricsSummary, type NetworkMetrics } from "@/lib/api";
+
 // ─── Fleet Resource Overview (bottom-right) ──────────────────────────────────
 
-const METRICS = [
-    { label: "CPU Utilization", value: "62%", change: "+8%", changeColor: "#f0883e", sparkColor: "#22d3ee", sparkPoints: "0,14 10,12 20,13 30,10 40,11 50,8 60,9 70,6 80,7 90,4 100,5" },
-    { label: "Memory Utilization", value: "71%", change: "+5%", changeColor: "#f0883e", sparkColor: "#a371f7", sparkPoints: "0,16 10,14 20,15 30,12 40,13 50,10 60,11 70,8 80,9 90,6 100,7" },
-    { label: "Network I/O", value: "1.2Tbps", change: "+12%", changeColor: "#3fb950", sparkColor: "#3fb950", sparkPoints: "0,15 10,13 20,14 30,11 40,12 50,9 60,10 70,7 80,8 90,5 100,6" },
-];
+interface Metric {
+    label: string;
+    value: string;
+    change: string;
+    changeColor: string;
+    sparkColor: string;
+    sparkPoints: string;
+}
+
+function generateSparkPoints(baseValue: number): string {
+    const points: string[] = [];
+    let y = 10;
+    for (let x = 0; x <= 100; x += 10) {
+        y = Math.max(3, Math.min(16, 16 - (baseValue / 100) * 12 + ((x * 7 + baseValue) % 5) - 2));
+        points.push(`${x},${y}`);
+    }
+    return points.join(" ");
+}
+
+function deriveMetrics(metrics: MetricsSummary | null, network: NetworkMetrics | null): Metric[] {
+    if (!metrics && !network) return [];
+    const cpu = metrics ? Math.round(metrics.cluster_cpu_percent) : 0;
+    const mem = metrics ? Math.round(metrics.cluster_memory_percent) : 0;
+    const netBandwidth = network?.total_bandwidth || "—";
+    return [
+        { label: "CPU Utilization", value: `${cpu}%`, change: cpu > 70 ? `+${cpu - 60}%` : `${cpu - 50}%`, changeColor: cpu > 70 ? "#f0883e" : "#3fb950", sparkColor: "#22d3ee", sparkPoints: generateSparkPoints(cpu) },
+        { label: "Memory Utilization", value: `${mem}%`, change: mem > 70 ? `+${mem - 60}%` : `${mem - 50}%`, changeColor: mem > 70 ? "#f0883e" : "#3fb950", sparkColor: "#a371f7", sparkPoints: generateSparkPoints(mem) },
+        { label: "Network I/O", value: netBandwidth, change: network ? `↑${formatBytesShort(network.transmit_bytes_per_sec)} ↓${formatBytesShort(network.receive_bytes_per_sec)}` : "—", changeColor: "#3fb950", sparkColor: "#3fb950", sparkPoints: generateSparkPoints(50) },
+    ];
+}
+
+function formatBytesShort(bytes: number): string {
+    if (bytes >= 1e9) return `${(bytes / 1e9).toFixed(1)}GB/s`;
+    if (bytes >= 1e6) return `${(bytes / 1e6).toFixed(1)}MB/s`;
+    if (bytes >= 1e3) return `${(bytes / 1e3).toFixed(0)}KB/s`;
+    return `${Math.round(bytes)}B/s`;
+}
 
 export function FleetResourceOverview() {
+    const [metrics, setMetrics] = useState<Metric[]>([]);
+
+    useEffect(() => {
+        async function load() {
+            try {
+                const [data, network] = await Promise.all([
+                    getMetricsSummary().catch(() => null),
+                    getNetworkMetrics().catch(() => null),
+                ]);
+                setMetrics(deriveMetrics(data, network));
+            } catch { }
+        }
+        load();
+        const interval = setInterval(load, 15000);
+        return () => clearInterval(interval);
+    }, []);
     return (
         <div className="rounded-[12px] border border-[#21262d] bg-[#161b22] p-3.5">
             <div className="flex items-center justify-between mb-3">
@@ -21,7 +72,7 @@ export function FleetResourceOverview() {
                 </div>
             </div>
             <div className="space-y-3">
-                {METRICS.map((m, i) => (
+                {metrics.map((m, i) => (
                     <div key={i}>
                         <div className="flex items-baseline justify-between mb-1">
                             <span className="text-[10.5px] text-[#8b949e]">{m.label}</span>

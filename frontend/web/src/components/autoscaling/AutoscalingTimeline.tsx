@@ -1,5 +1,8 @@
 "use client";
 
+import { useEffect, useState } from "react";
+import { getRecentEvents } from "@/lib/api";
+
 // ─── Autoscaling Timeline (horizontal with large circle icons) ───────────────
 
 const EVENTS = [
@@ -10,7 +13,52 @@ const EVENTS = [
     { time: "10:23 AM", line1: "Workload", line2: "Stabilized", color: "#3fb950" },
 ];
 
+type TimelineEvent = typeof EVENTS[number];
+
+const SEVERITY_COLORS: Record<string, string> = {
+    critical: "#f85149",
+    high: "#f0883e",
+    warning: "#f0883e",
+    medium: "#a371f7",
+    low: "#58a6ff",
+    info: "#3fb950",
+};
+
+function mapEventsToTimeline(
+    apiEvents: Array<{ type: string; title: string; detail: string; severity: string; timestamp: string }>
+): TimelineEvent[] {
+    return apiEvents.slice(0, 5).map((ev) => {
+        const date = new Date(ev.timestamp);
+        const time = date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: true }).toUpperCase();
+        const words = ev.title.split(" ");
+        const mid = Math.ceil(words.length / 2);
+        const line1 = words.slice(0, mid).join(" ");
+        const line2 = words.slice(mid).join(" ") || ev.type;
+        const color = SEVERITY_COLORS[ev.severity] || "#3fb950";
+        return { time, line1, line2, color };
+    });
+}
+
 export function AutoscalingTimeline() {
+    const [events, setEvents] = useState<TimelineEvent[]>([]);
+
+    useEffect(() => {
+        function load() {
+            Promise.all([
+                getRecentEvents().catch(() => null),
+            ]).then(([eventsData]) => {
+                const apiEvents = eventsData?.events || [];
+                if (apiEvents.length > 0) {
+                    const mapped = mapEventsToTimeline(apiEvents);
+                    if (mapped.length > 0) setEvents(mapped);
+                }
+            });
+        }
+        load();
+        const interval = setInterval(load, 15000);
+        return () => clearInterval(interval);
+    }, []);
+
     return (
         <div className="rounded-[12px] border border-[#21262d] bg-[#161b22] p-4">
             {/* Header */}
@@ -39,7 +87,7 @@ export function AutoscalingTimeline() {
                 />
 
                 {/* Event nodes */}
-                {EVENTS.map((ev, i) => (
+                {events.map((ev, i) => (
                     <div key={i} className="flex flex-col items-center relative z-10" style={{ width: "18%" }}>
                         {/* Circle with hexagonal icon */}
                         <div

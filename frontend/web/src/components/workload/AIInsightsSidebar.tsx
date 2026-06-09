@@ -1,5 +1,8 @@
 "use client";
 
+import { useEffect, useState } from "react";
+import { getIncidents, getRiskPredictions, type Incident, type RiskPrediction } from "@/lib/api";
+
 // ─── Alert Data ──────────────────────────────────────────────────────────────
 
 interface Alert {
@@ -13,59 +16,6 @@ interface Alert {
     sparkPoints: string;
 }
 
-const ALERTS: Alert[] = [
-    {
-        icon: "warning",
-        title: "Pending Workloads Spike",
-        description: "6 pods pending for >2m in kube-system",
-        confidence: 92,
-        color: "#f0883e",
-        bgColor: "rgba(240,136,62,0.15)",
-        sparkColor: "#f0883e",
-        sparkPoints: "0,16 8,15 16,12 24,11 32,8 40,5 48,3",
-    },
-    {
-        icon: "refresh",
-        title: "Restart Pattern Detected",
-        description: "28 pods restarting frequently in last 15m.",
-        confidence: 89,
-        color: "#f85149",
-        bgColor: "rgba(248,81,73,0.15)",
-        sparkColor: "#f85149",
-        sparkPoints: "0,12 6,4 12,14 18,3 24,11 30,2 36,13 42,5 48,10",
-    },
-    {
-        icon: "cpu",
-        title: "CPU Pressure Rising",
-        description: "api-gateway experiencing sustained CPU > 80%",
-        confidence: 87,
-        color: "#f0883e",
-        bgColor: "rgba(240,136,62,0.15)",
-        sparkColor: "#f0883e",
-        sparkPoints: "0,15 8,14 16,12 24,9 32,7 40,5 48,3",
-    },
-    {
-        icon: "memory",
-        title: "Memory Anomaly",
-        description: "user-service memory usage growing faster than normal",
-        confidence: 91,
-        color: "#a371f7",
-        bgColor: "rgba(163,113,247,0.15)",
-        sparkColor: "#a371f7",
-        sparkPoints: "0,14 6,11 12,13 18,9 24,11 30,7 36,9 42,5 48,4",
-    },
-    {
-        icon: "shield",
-        title: "Workload Stability",
-        description: "92% of workloads are stable. No critical incidents detected.",
-        confidence: 96,
-        color: "#3fb950",
-        bgColor: "rgba(63,185,80,0.15)",
-        sparkColor: "#3fb950",
-        sparkPoints: "0,9 8,8 16,9 24,8 32,9 40,8 48,9",
-    },
-];
-
 interface Recommendation {
     icon: "warning" | "refresh" | "memory";
     color: string;
@@ -75,37 +25,131 @@ interface Recommendation {
     impact: "High" | "Medium";
 }
 
-const RECOMMENDATIONS: Recommendation[] = [
-    {
-        icon: "warning",
-        color: "#f0883e",
-        bgColor: "rgba(240,136,62,0.15)",
-        title: "Scale api-gateway",
-        detail: "CPU expected to hit 95% in 23m",
-        impact: "High",
-    },
-    {
-        icon: "refresh",
-        color: "#f85149",
-        bgColor: "rgba(248,81,73,0.15)",
-        title: "Investigate restarts",
-        detail: "28 pods with CrashLoopBackOff",
-        impact: "High",
-    },
-    {
-        icon: "memory",
-        color: "#a371f7",
-        bgColor: "rgba(163,113,247,0.15)",
-        title: "Increase memory limits",
-        detail: "user-service projected to OOM in 34m",
-        impact: "Medium",
-    },
-];
+function generateSparkFromSeed(seed: number): string {
+    const points: string[] = [];
+    let y = 12;
+    for (let x = 0; x <= 48; x += 6) {
+        y = Math.max(2, Math.min(16, y + ((seed * (x + 1) * 31 + 7) % 7) - 3));
+        points.push(`${x},${y}`);
+    }
+    return points.join(" ");
+}
+
+function deriveAlerts(incidents: Incident[], predictions: RiskPrediction[]): Alert[] {
+    const alerts: Alert[] = [];
+
+    for (const inc of incidents.slice(0, 3)) {
+        const isHigh = inc.severity === "critical" || inc.severity === "high";
+        const color = inc.severity === "critical" ? "#f85149" : inc.severity === "high" ? "#f0883e" : "#a371f7";
+        alerts.push({
+            icon: isHigh ? "warning" : "refresh",
+            title: inc.title.length > 30 ? inc.title.slice(0, 28) + "…" : inc.title,
+            description: `${inc.service} in ${inc.namespace}`,
+            confidence: inc.confidence || 90,
+            color,
+            bgColor: `${color}26`,
+            sparkColor: color,
+            sparkPoints: generateSparkFromSeed(alerts.length + 1),
+        });
+    }
+
+    for (const pred of predictions.slice(0, 2)) {
+        const prob = pred.probability;
+        const color = prob > 0.7 ? "#f85149" : prob > 0.4 ? "#f0883e" : "#3fb950";
+        alerts.push({
+            icon: "cpu",
+            title: pred.preventive_action.length > 30 ? pred.preventive_action.slice(0, 28) + "…" : pred.preventive_action,
+            description: pred.predicted_issue,
+            confidence: Math.round(prob * 100),
+            color,
+            bgColor: `${color}26`,
+            sparkColor: color,
+            sparkPoints: generateSparkFromSeed(alerts.length + 10),
+        });
+    }
+
+    if (alerts.length === 0) {
+        alerts.push({
+            icon: "shield",
+            title: "Workload Stability",
+            description: "All workloads are stable. No incidents detected.",
+            confidence: 98,
+            color: "#3fb950",
+            bgColor: "rgba(63,185,80,0.15)",
+            sparkColor: "#3fb950",
+            sparkPoints: "0,9 8,8 16,9 24,8 32,9 40,8 48,9",
+        });
+    }
+
+    return alerts.slice(0, 5);
+}
+
+function deriveRecommendations(incidents: Incident[], predictions: RiskPrediction[]): Recommendation[] {
+    const recs: Recommendation[] = [];
+
+    for (const pred of predictions.slice(0, 2)) {
+        const prob = pred.probability;
+        const color = prob > 0.7 ? "#f85149" : "#f0883e";
+        recs.push({
+            icon: prob > 0.7 ? "warning" : "memory",
+            color,
+            bgColor: `${color}26`,
+            title: pred.preventive_action.length > 22 ? pred.preventive_action.slice(0, 20) + "…" : pred.preventive_action,
+            detail: `${pred.service}: ${pred.time_horizon}`,
+            impact: prob > 0.7 ? "High" : "Medium",
+        });
+    }
+
+    for (const inc of incidents.filter(i => i.status === "active").slice(0, 1)) {
+        recs.push({
+            icon: "refresh",
+            color: "#f85149",
+            bgColor: "rgba(248,81,73,0.15)",
+            title: inc.rootCause ? "Fix root cause" : "Investigate incident",
+            detail: inc.title.length > 30 ? inc.title.slice(0, 28) + "…" : inc.title,
+            impact: "High",
+        });
+    }
+
+    return recs.slice(0, 3);
+}
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
 export function AIInsightsSidebar() {
-    const confidence = 92;
+    const [alerts, setAlerts] = useState<Alert[]>([]);
+    const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
+    const [overallConfidence, setOverallConfidence] = useState(0);
+
+    useEffect(() => {
+        async function load() {
+            try {
+                const [incidentData, predictionsData] = await Promise.all([
+                    getIncidents().catch(() => ({ incidents: [], total: 0 })),
+                    getRiskPredictions().catch(() => ({ predictions: [], total: 0 })),
+                ]);
+                const incidents = incidentData.incidents || [];
+                const predictions = predictionsData.predictions || [];
+
+                setAlerts(deriveAlerts(incidents, predictions));
+                setRecommendations(deriveRecommendations(incidents, predictions));
+
+                if (incidents.length === 0 && predictions.length === 0) {
+                    setOverallConfidence(98);
+                } else {
+                    const avgConf = incidents.length > 0
+                        ? incidents.reduce((sum, i) => sum + (i.confidence || 85), 0) / incidents.length
+                        : 95;
+                    setOverallConfidence(Math.round(avgConf));
+                }
+            } catch { }
+        }
+        load();
+        const interval = setInterval(load, 15000);
+        return () => clearInterval(interval);
+    }, []);
+
+    const confidence = overallConfidence;
     const circumference = 2 * Math.PI * 24;
     const offset = circumference - (confidence / 100) * circumference;
 
@@ -187,7 +231,7 @@ export function AIInsightsSidebar() {
 
             {/* Alert Cards */}
             <div className="space-y-2">
-                {ALERTS.map((alert, i) => (
+                {alerts.map((alert, i) => (
                     <AlertCard key={i} alert={alert} />
                 ))}
             </div>
@@ -200,11 +244,11 @@ export function AIInsightsSidebar() {
                         className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-bold text-white"
                         style={{ background: "linear-gradient(135deg, #7c3aed, #a855f7)" }}
                     >
-                        {RECOMMENDATIONS.length}
+                        {recommendations.length}
                     </span>
                 </div>
                 <div className="space-y-1.5">
-                    {RECOMMENDATIONS.map((rec, i) => (
+                    {recommendations.map((rec, i) => (
                         <RecommendationRow key={i} rec={rec} />
                     ))}
                 </div>

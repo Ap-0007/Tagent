@@ -1,32 +1,85 @@
 "use client";
 
+import { useEffect, useState } from "react";
+import { getMetricsSummary, getClusterSummary, getNodes, type MetricsSummary, type ClusterSummary, type NodeInfo } from "@/lib/api";
+
 // ─── Bottom status bar ───────────────────────────────────────────────────────
 
 export function InfrastructureStatusBar() {
+    const [metrics, setMetrics] = useState<MetricsSummary | null>(null);
+    const [summary, setSummary] = useState<ClusterSummary | null>(null);
+    const [nodes, setNodes] = useState<NodeInfo[]>([]);
+
+    useEffect(() => {
+        async function load() {
+            try {
+                const [m, s, n] = await Promise.all([
+                    getMetricsSummary().catch(() => null),
+                    getClusterSummary().catch(() => null),
+                    getNodes().catch(() => []),
+                ]);
+                setMetrics(m);
+                setSummary(s);
+                setNodes(n || []);
+            } catch { }
+        }
+        load();
+        const interval = setInterval(load, 15000);
+        return () => clearInterval(interval);
+    }, []);
+
+    // Derive values from API data
+    const readyNodes = summary?.ready_nodes ?? nodes.filter(n => n.status === "Ready").length;
+    const totalNodesOnline = readyNodes || nodes.length;
+    const workloadsRunning = summary?.running_pods ?? summary?.total_pods ?? 0;
+
+    // Calculate total memory from nodes
+    const totalMemoryGB = nodes.reduce((sum, n) => {
+        const mem = n.memory_capacity || "0";
+        // Parse memory like "32Gi", "16384Mi", etc.
+        if (mem.endsWith("Gi")) return sum + parseFloat(mem);
+        if (mem.endsWith("Mi")) return sum + parseFloat(mem) / 1024;
+        if (mem.endsWith("Ki")) return sum + parseFloat(mem) / (1024 * 1024);
+        return sum + parseFloat(mem) / (1024 * 1024 * 1024);
+    }, 0);
+    const totalMemoryStr = totalMemoryGB >= 1024 ? `${(totalMemoryGB / 1024).toFixed(1)} TB` : `${Math.round(totalMemoryGB)} GB`;
+
+    // Estimate storage (we'll show pod capacity as a proxy)
+    const totalPodCapacity = nodes.reduce((sum, n) => sum + (parseInt(n.pod_capacity) || 0), 0);
+    const storageStr = totalPodCapacity > 0 ? `${totalPodCapacity}` : "—";
+
+    // Calculate SLA from cluster health
+    const totalNodes = summary?.total_nodes ?? nodes.length;
+    const slaPercent = totalNodes > 0 ? ((readyNodes / totalNodes) * 100).toFixed(2) : "99.99";
+
+    // Alerts count for network throughput approximation
+    const alertCount = metrics?.alerts?.length ?? 0;
+    const isHealthy = alertCount === 0 && readyNodes === totalNodes;
+
     return (
         <div className="rounded-[10px] border border-[#21262d] bg-[#161b22] px-4 py-2.5 flex flex-wrap items-center gap-x-6 gap-y-2 text-[11px]">
             <div className="flex items-center gap-2">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#3fb950" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={isHealthy ? "#3fb950" : "#f0883e"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
                 </svg>
                 <span className="text-[#8b949e]">Infrastructure Pulse</span>
-                <span className="inline-flex items-center gap-1 text-[#3fb950] font-semibold">
-                    <span className="w-1.5 h-1.5 rounded-full bg-[#3fb950]" style={{ boxShadow: "0 0 4px #3fb950", animation: "wi-pulse 2s infinite" }} />
-                    Live
+                <span className={`inline-flex items-center gap-1 font-semibold ${isHealthy ? "text-[#3fb950]" : "text-[#f0883e]"}`}>
+                    <span className={`w-1.5 h-1.5 rounded-full ${isHealthy ? "bg-[#3fb950]" : "bg-[#f0883e]"}`} style={{ boxShadow: `0 0 4px ${isHealthy ? "#3fb950" : "#f0883e"}`, animation: "wi-pulse 2s infinite" }} />
+                    {isHealthy ? "Live" : "Degraded"}
                 </span>
             </div>
-            <Stat icon="server" iconColor="#58a6ff" value="24" label="Nodes Online" />
-            <Stat icon="layers" iconColor="#a371f7" value="326" label="Workloads Running" />
-            <Stat icon="memory" iconColor="#22d3ee" value="2.4 TB" label="Total Memory" />
-            <Stat icon="storage" iconColor="#3fb950" value="45.7 TB" label="Total Storage" />
-            <Stat icon="network" iconColor="#58a6ff" value="3.2 Tbps" label="Network Throughput" />
+            <Stat icon="server" iconColor="#58a6ff" value={String(totalNodesOnline)} label="Nodes Online" />
+            <Stat icon="layers" iconColor="#a371f7" value={String(workloadsRunning)} label="Workloads Running" />
+            <Stat icon="memory" iconColor="#22d3ee" value={totalMemoryStr} label="Total Memory" />
+            <Stat icon="storage" iconColor="#3fb950" value={`${storageStr} pods max`} label="Pod Capacity" />
+            <Stat icon="network" iconColor="#58a6ff" value={alertCount > 0 ? `${alertCount} alerts` : "0 alerts"} label="Active Alerts" />
             <div className="flex items-center gap-2 ml-auto">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#3fb950" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={parseFloat(slaPercent) >= 99 ? "#3fb950" : "#f0883e"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
                     <polyline points="9 12 11 14 15 10" />
                 </svg>
-                <span className="text-[#3fb950] font-mono font-bold">99.99%</span>
-                <span className="text-[#8b949e]">Infrastructure SLA</span>
+                <span className={`font-mono font-bold ${parseFloat(slaPercent) >= 99 ? "text-[#3fb950]" : "text-[#f0883e]"}`}>{slaPercent}%</span>
+                <span className="text-[#8b949e]">Node Health</span>
             </div>
         </div>
     );

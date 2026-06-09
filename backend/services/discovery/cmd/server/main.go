@@ -14,6 +14,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"github.com/tagent-ai/tagent/backend/services/discovery/internal/cost"
 	"github.com/tagent-ai/tagent/backend/services/discovery/internal/k8s"
 	"github.com/tagent-ai/tagent/backend/services/discovery/internal/scanner"
 )
@@ -249,8 +250,20 @@ func main() {
 		c.JSON(200, gin.H{"logs": entries, "total": len(entries)})
 	})
 
-	// Cost estimation — estimate based on resource requests
+	// Cost estimation — real cloud billing API or node-capacity fallback
 	router.GET("/cost/summary", func(c *gin.Context) {
+		// Try real cloud billing provider first
+		costProvider := cost.DetectProvider()
+		if costProvider != nil && costProvider.IsConfigured() {
+			summary, err := costProvider.FetchCosts(c.Request.Context())
+			if err == nil {
+				c.JSON(200, summary)
+				return
+			}
+			log.Printf("[cost] Cloud provider %s failed, falling back to estimation: %v", costProvider.Name(), err)
+		}
+
+		// Fallback: estimate from node capacity
 		stateLock.RLock()
 		defer stateLock.RUnlock()
 
@@ -320,6 +333,8 @@ func main() {
 			"potential_savings": fmt.Sprintf("$%.2f", totalMonthly*0.25),
 			"items":             items,
 			"recommendations":  recommendations,
+			"source":           "estimated",
+			"last_updated":     time.Now().UTC().Format(time.RFC3339),
 		})
 	})
 

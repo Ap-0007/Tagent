@@ -1,22 +1,54 @@
 "use client";
 
+import { useEffect, useState } from "react";
+import { getFleetClusters, type ClusterRegistration } from "@/lib/api";
+
 // ─── Cluster Health Distribution (donut chart) ───────────────────────────────
 
-const SEGMENTS = [
-    { label: "Healthy", count: 2, percent: 50, color: "#3fb950" },
-    { label: "Warning", count: 1, percent: 25, color: "#f0883e" },
-    { label: "Critical", count: 0, percent: 0, color: "#f85149" },
-    { label: "Unknown", count: 1, percent: 25, color: "#6e7681" },
-];
+interface Segment {
+    label: string;
+    count: number;
+    percent: number;
+    color: string;
+}
+
+function deriveSegments(clusters: ClusterRegistration[]): Segment[] {
+    if (clusters.length === 0) return [];
+    const total = clusters.length;
+    const healthy = clusters.filter(c => c.status === "healthy" || c.health_score >= 80).length;
+    const warning = clusters.filter(c => (c.health_score >= 50 && c.health_score < 80)).length;
+    const critical = clusters.filter(c => c.health_score < 50).length;
+    const unknown = Math.max(0, total - healthy - warning - critical);
+    return [
+        { label: "Healthy", count: healthy, percent: total > 0 ? Math.round((healthy / total) * 100) : 0, color: "#3fb950" },
+        { label: "Warning", count: warning, percent: total > 0 ? Math.round((warning / total) * 100) : 0, color: "#f0883e" },
+        { label: "Critical", count: critical, percent: total > 0 ? Math.round((critical / total) * 100) : 0, color: "#f85149" },
+        { label: "Unknown", count: unknown, percent: total > 0 ? Math.round((unknown / total) * 100) : 0, color: "#6e7681" },
+    ];
+}
 
 export function ClusterHealthDistribution() {
-    const total = 4;
+    const [segments, setSegments] = useState<Segment[]>([]);
+
+    useEffect(() => {
+        async function load() {
+            try {
+                const data = await getFleetClusters().catch(() => ({ clusters: [], total: 0 }));
+                setSegments(deriveSegments(data.clusters || []));
+            } catch { }
+        }
+        load();
+        const interval = setInterval(load, 15000);
+        return () => clearInterval(interval);
+    }, []);
+
+    const total = segments.reduce((s, seg) => s + seg.count, 0);
     const r = 40;
     const c = 2 * Math.PI * r;
 
     // Build donut segments
     let accumulated = 0;
-    const arcs = SEGMENTS.filter(s => s.percent > 0).map(s => {
+    const arcs = segments.filter(s => s.percent > 0).map(s => {
         const start = accumulated;
         accumulated += s.percent;
         return { ...s, startOffset: c - (start / 100) * c, length: (s.percent / 100) * c };
@@ -52,7 +84,7 @@ export function ClusterHealthDistribution() {
                 </div>
                 {/* Legend */}
                 <div className="space-y-2">
-                    {SEGMENTS.map((s, i) => (
+                    {segments.map((s, i) => (
                         <div key={i} className="flex items-center gap-2">
                             <span className="w-2 h-2 rounded-full shrink-0" style={{ background: s.color }} />
                             <span className="text-[11px] text-[#8b949e]">{s.label}</span>
