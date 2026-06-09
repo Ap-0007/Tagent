@@ -1,116 +1,90 @@
 "use client";
 
-import { useState } from "react";
-import { CostStatsRow } from "@/components/cost/CostStatsRow";
-import { CostBreakdown } from "@/components/cost/CostBreakdown";
-import { AICostInsights } from "@/components/cost/AICostInsights";
-import { CostAnomalyDetection } from "@/components/cost/CostAnomalyDetection";
-import { KubernetesCostHeatmap } from "@/components/cost/KubernetesCostHeatmap";
-import { ResourceEfficiencyCenter } from "@/components/cost/ResourceEfficiencyCenter";
-import { CostForecastingEngine } from "@/components/cost/CostForecastingEngine";
-import { OptimizationRecommendations } from "@/components/cost/OptimizationRecommendations";
-import { CostReliabilityAnalysis } from "@/components/cost/CostReliabilityAnalysis";
-import { ExecutiveSummary } from "@/components/cost/ExecutiveSummary";
-
-const TIME_RANGES = ["Last 7 Days", "Last 30 Days", "Last 90 Days", "This Month", "Last Month", "Custom"];
-const PROVIDERS = [
-    { id: "aws", label: "AWS", img: "/aws logo.png" },
-    { id: "azure", label: "Azure", img: "/azure logo.png" },
-    { id: "gcp", label: "Google Cloud", img: "/gcp logo.png" },
-];
+import { useEffect, useState } from "react";
+import { getCostSummary, type CostSummary } from "@/lib/api";
+import { DollarSign, Loader2, WifiOff } from "lucide-react";
 
 export default function CostPage() {
-    const [timeRange, setTimeRange] = useState("Last 30 Days");
-    const [timeOpen, setTimeOpen] = useState(false);
-    const [activeProvider, setActiveProvider] = useState("aws");
+    const [data, setData] = useState<CostSummary | null>(null);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
+
+    useEffect(() => {
+        async function load() {
+            try {
+                const result = await getCostSummary();
+                setData(result);
+                setError(null);
+            } catch (e: any) { setError(e.message); }
+            finally { setLoading(false); }
+        }
+        load();
+    }, []);
 
     return (
-        <div className="flex-1 overflow-y-auto wi-scrollbar bg-[#0d1117]">
-            <style jsx global>{`
-                .wi-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
-                .wi-scrollbar::-webkit-scrollbar-track { background: #161b22; }
-                .wi-scrollbar::-webkit-scrollbar-thumb { background: #30363d; border-radius: 3px; }
-                @keyframes wi-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
-            `}</style>
-
-            <div className="px-4 pt-4 pb-6 space-y-3">
-                {/* Cost page sub-header: Time Range + Cloud Providers */}
-                <div className="flex items-center justify-end gap-3">
-                    {/* Time Range */}
-                    <div className="relative">
-                        <button
-                            onClick={() => setTimeOpen(o => !o)}
-                            className="flex items-center gap-2 h-9 px-3 rounded-lg bg-[#0d1117] border border-[#30363d] hover:border-[#484f58] transition-colors"
-                        >
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8b949e" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                                <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
-                                <line x1="16" y1="2" x2="16" y2="6" />
-                                <line x1="8" y1="2" x2="8" y2="6" />
-                                <line x1="3" y1="10" x2="21" y2="10" />
-                            </svg>
-                            <div className="text-left">
-                                <p className="text-[9px] text-[#8b949e] leading-none">Time Range</p>
-                                <p className="text-[12px] text-[#e6edf3] font-semibold leading-tight">{timeRange}</p>
+        <div className="flex-1 overflow-y-auto scrollbar bg-[#0d1117]">
+            <header className="px-6 py-5 border-b border-zinc-800/60">
+                <div className="flex items-center justify-between">
+                    <div>
+                        <h1 className="text-lg font-semibold text-zinc-100">Cost Dashboard</h1>
+                        <p className="text-sm text-zinc-500 mt-0.5">Infrastructure cost estimation</p>
+                    </div>
+                    {loading && <Loader2 className="w-4 h-4 text-zinc-500 animate-spin" />}
+                    {error && <WifiOff className="w-4 h-4 text-amber-400" />}
+                </div>
+            </header>
+            <div className="px-6 py-5 space-y-4">
+                {data ? (
+                    <>
+                        <div className="grid grid-cols-2 gap-3">
+                            <div className="rounded-lg border border-[#21262d] bg-[#161b22] p-4">
+                                <p className="text-[11px] text-[#8b949e] mb-1">Monthly Spend</p>
+                                <p className="text-[28px] font-bold text-[#22d3ee] font-mono">{data.monthly_spend}</p>
                             </div>
-                            <svg width="10" height="10" viewBox="0 0 12 12" fill="none" className={`transition-transform ${timeOpen ? "rotate-180" : ""}`}>
-                                <path d="M2 4L6 8L10 4" stroke="#8b949e" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                            </svg>
-                        </button>
-                        {timeOpen && (
-                            <div className="absolute top-full mt-1 right-0 z-30 w-44 rounded-md bg-[#161b22] border border-[#30363d] shadow-[0_8px_24px_rgba(0,0,0,0.5)] py-1">
-                                {TIME_RANGES.map(t => (
-                                    <button
-                                        key={t}
-                                        onClick={() => { setTimeRange(t); setTimeOpen(false); }}
-                                        className={`w-full text-left px-3 py-1.5 text-[11.5px] hover:bg-[#21262d] transition-colors ${timeRange === t ? "text-[#58a6ff]" : "text-[#e6edf3]"}`}
-                                    >
-                                        {t}
-                                    </button>
-                                ))}
+                            <div className="rounded-lg border border-[#21262d] bg-[#161b22] p-4">
+                                <p className="text-[11px] text-[#8b949e] mb-1">Potential Savings</p>
+                                <p className="text-[28px] font-bold text-[#3fb950] font-mono">{data.potential_savings}</p>
+                            </div>
+                        </div>
+                        {data.items.length > 0 && (
+                            <div className="rounded-lg border border-[#21262d] bg-[#161b22] p-4">
+                                <h3 className="text-[13px] font-semibold text-[#e6edf3] mb-3">Cost Breakdown</h3>
+                                <div className="space-y-2">
+                                    {data.items.map((item, i) => (
+                                        <div key={i} className="flex items-center justify-between p-2 rounded-md bg-[#0d1117] border border-[#21262d]">
+                                            <div>
+                                                <p className="text-[11px] text-[#e6edf3] font-mono">{item.name}</p>
+                                                <p className="text-[9px] text-[#8b949e]">{item.kind} · {item.namespace} · {item.basis}</p>
+                                            </div>
+                                            <span className="text-[12px] text-[#22d3ee] font-mono font-bold">{item.estimate}</span>
+                                        </div>
+                                    ))}
+                                </div>
                             </div>
                         )}
+                        {data.recommendations.length > 0 && (
+                            <div className="rounded-lg border border-[#21262d] bg-[#161b22] p-4">
+                                <h3 className="text-[13px] font-semibold text-[#e6edf3] mb-3">Optimization Recommendations</h3>
+                                <div className="space-y-2">
+                                    {data.recommendations.map((rec, i) => (
+                                        <div key={i} className="p-3 rounded-md bg-[#0d1117] border border-[#21262d]">
+                                            <div className="flex items-center justify-between mb-1">
+                                                <span className="text-[12px] text-[#e6edf3] font-medium">{rec.title}</span>
+                                                <span className="text-[11px] text-[#3fb950] font-mono font-bold">{rec.saving}</span>
+                                            </div>
+                                            <p className="text-[10px] text-[#8b949e]">{rec.detail}</p>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                    </>
+                ) : !loading ? (
+                    <div className="text-center py-12">
+                        <DollarSign className="w-8 h-8 text-zinc-600 mx-auto mb-3" />
+                        <p className="text-sm text-zinc-400">{error ? "Cannot reach service" : "No cost data available"}</p>
                     </div>
-
-                    {/* Cloud Provider Icons */}
-                    <div className="flex items-center gap-1.5">
-                        {PROVIDERS.map(p => (
-                            <button
-                                key={p.id}
-                                onClick={() => setActiveProvider(p.id)}
-                                className={`w-10 h-10 rounded-lg bg-[#0d1117] flex items-center justify-center transition-colors ${activeProvider === p.id
-                                    ? "border-2 border-[#f0883e]/70 shadow-[0_0_8px_rgba(240,136,62,0.3)]"
-                                    : "border border-[#30363d] hover:border-[#484f58]"
-                                    }`}
-                                title={p.label}
-                            >
-                                <img src={p.img} alt={p.label} width={22} height={22} className="object-contain" />
-                            </button>
-                        ))}
-                    </div>
-                </div>
-
-                <CostStatsRow />
-
-                {/* Row 2: Cost Breakdown + AI Cost Insights + Cost Anomaly Detection */}
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
-                    <CostBreakdown />
-                    <AICostInsights />
-                    <CostAnomalyDetection />
-                </div>
-
-                {/* Row 3: Heatmap + Resource Efficiency + Cost Forecasting */}
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
-                    <KubernetesCostHeatmap />
-                    <ResourceEfficiencyCenter />
-                    <CostForecastingEngine />
-                </div>
-
-                {/* Row 4: Optimization Recommendations + Cost vs Reliability + Executive Summary */}
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
-                    <OptimizationRecommendations />
-                    <CostReliabilityAnalysis />
-                    <ExecutiveSummary />
-                </div>
+                ) : null}
             </div>
         </div>
     );

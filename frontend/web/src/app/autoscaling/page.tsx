@@ -1,47 +1,74 @@
 "use client";
 
-import { AutoscalingStatsRow } from "@/components/autoscaling/AutoscalingStatsRow";
-import { LiveScalingOverview } from "@/components/autoscaling/LiveScalingOverview";
-import { AICapacityInsights } from "@/components/autoscaling/AICapacityInsights";
-import { PredictiveDemandForecasting } from "@/components/autoscaling/PredictiveDemandForecasting";
-import { WorkloadElasticityMap } from "@/components/autoscaling/WorkloadElasticityMap";
-import { CostPerformanceAnalysis } from "@/components/autoscaling/CostPerformanceAnalysis";
-import { AutoscalingTimeline } from "@/components/autoscaling/AutoscalingTimeline";
-import { ScalingAnomalyDetection } from "@/components/autoscaling/ScalingAnomalyDetection";
-import { AIOptimizationRecommendations } from "@/components/autoscaling/AIOptimizationRecommendations";
+import { useEffect, useState } from "react";
+import { getAutoscaling, type AutoscalingSummary } from "@/lib/api";
+import { TrendingUp, Loader2, WifiOff } from "lucide-react";
 
 export default function AutoscalingPage() {
+    const [data, setData] = useState<AutoscalingSummary | null>(null);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
+
+    useEffect(() => {
+        async function load() {
+            try {
+                const result = await getAutoscaling();
+                setData(result);
+                setError(null);
+            } catch (e: any) { setError(e.message); }
+            finally { setLoading(false); }
+        }
+        load();
+    }, []);
+
     return (
-        <div className="flex-1 overflow-y-auto wi-scrollbar bg-[#0d1117]">
-            <style jsx global>{`
-                .wi-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
-                .wi-scrollbar::-webkit-scrollbar-track { background: #161b22; }
-                .wi-scrollbar::-webkit-scrollbar-thumb { background: #30363d; border-radius: 3px; }
-                @keyframes wi-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
-            `}</style>
-
-            <div className="px-4 pt-4 pb-6 space-y-3">
-                <AutoscalingStatsRow />
-
-                {/* Row 2: Live Scaling Overview + AI Capacity Insights */}
-                <div className="grid grid-cols-1 lg:grid-cols-[1fr_340px] gap-3">
-                    <LiveScalingOverview />
-                    <AICapacityInsights />
+        <div className="flex-1 overflow-y-auto scrollbar bg-[#0d1117]">
+            <header className="px-6 py-5 border-b border-zinc-800/60">
+                <div className="flex items-center justify-between">
+                    <div>
+                        <h1 className="text-lg font-semibold text-zinc-100">Autoscaling</h1>
+                        <p className="text-sm text-zinc-500 mt-0.5">HPA and VPA status</p>
+                    </div>
+                    {loading && <Loader2 className="w-4 h-4 text-zinc-500 animate-spin" />}
+                    {error && <WifiOff className="w-4 h-4 text-amber-400" />}
                 </div>
-
-                {/* Row 3: Predictive Demand + Workload Elasticity + Cost vs Performance */}
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
-                    <PredictiveDemandForecasting />
-                    <WorkloadElasticityMap />
-                    <CostPerformanceAnalysis />
-                </div>
-
-                {/* Row 4: Timeline + Anomaly Detection + AI Recommendations */}
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
-                    <AutoscalingTimeline />
-                    <ScalingAnomalyDetection />
-                    <AIOptimizationRecommendations />
-                </div>
+            </header>
+            <div className="px-6 py-5 space-y-4">
+                {data && data.hpas.length > 0 ? (
+                    <div className="rounded-lg border border-zinc-800 overflow-hidden">
+                        <table className="w-full text-[12px]">
+                            <thead className="bg-[#161b22] border-b border-zinc-800">
+                                <tr>
+                                    <th className="text-left px-4 py-3 text-[#8b949e]">Name</th>
+                                    <th className="text-left px-4 py-3 text-[#8b949e]">Namespace</th>
+                                    <th className="text-left px-4 py-3 text-[#8b949e]">Current</th>
+                                    <th className="text-left px-4 py-3 text-[#8b949e]">Desired</th>
+                                    <th className="text-left px-4 py-3 text-[#8b949e]">Min/Max</th>
+                                    <th className="text-left px-4 py-3 text-[#8b949e]">Status</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-zinc-800/50">
+                                {data.hpas.map(h => (
+                                    <tr key={`${h.namespace}/${h.name}`} className="hover:bg-[#161b22]">
+                                        <td className="px-4 py-3 text-[#e6edf3] font-mono">{h.name}</td>
+                                        <td className="px-4 py-3 text-[#8b949e]">{h.namespace}</td>
+                                        <td className="px-4 py-3 text-[#e6edf3] font-mono">{h.current}</td>
+                                        <td className="px-4 py-3 text-[#e6edf3] font-mono">{h.desired}</td>
+                                        <td className="px-4 py-3 text-[#8b949e] font-mono">{h.min}/{h.max}</td>
+                                        <td className="px-4 py-3">
+                                            <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${h.status === "stable" ? "bg-emerald-500/10 text-emerald-400" : "bg-amber-500/10 text-amber-400"}`}>{h.status}</span>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                ) : !loading ? (
+                    <div className="text-center py-12">
+                        <TrendingUp className="w-8 h-8 text-zinc-600 mx-auto mb-3" />
+                        <p className="text-sm text-zinc-400">{error ? "Cannot reach cluster" : "No HPAs configured in this cluster"}</p>
+                    </div>
+                ) : null}
             </div>
         </div>
     );
