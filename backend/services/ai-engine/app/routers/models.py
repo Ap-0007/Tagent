@@ -110,7 +110,7 @@ async def _k8s_store_secret(provider_id: str, api_key: str) -> bool:
         proc = await asyncio.create_subprocess_exec(
             "kubectl", "create", "secret", "generic", secret_name,
             f"--from-literal=api-key={api_key}",
-            f"-n", NAMESPACE,
+            "-n", NAMESPACE,
             "--dry-run=client", "-o", "yaml",
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
