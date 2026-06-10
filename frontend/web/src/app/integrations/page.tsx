@@ -1,13 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
 import {
     getIntegrations, testIntegration, getIntegrationConfig, saveIntegrationConfig, deleteIntegrationConfig,
     type IntegrationInfo, type IntegrationConfigResponse,
 } from "@/lib/api";
 import {
-    Loader2, WifiOff, CheckCircle, XCircle, ExternalLink, RefreshCw,
+    Loader2, CheckCircle, XCircle, RefreshCw,
     Settings, Zap, Search, ArrowRight, Unplug, Eye, EyeOff,
 } from "lucide-react";
 
@@ -212,9 +211,6 @@ export default function IntegrationsPage() {
 
     const connected = integrations.filter(i => i.configured);
     const available = integrations.filter(i => !i.configured);
-    const filtered = integrations.filter(i =>
-        !search || i.name.toLowerCase().includes(search.toLowerCase()) || i.id.toLowerCase().includes(search.toLowerCase())
-    );
 
     return (
         <div className="flex-1 overflow-y-auto bg-[#0d1117]">
