@@ -85,7 +85,7 @@ ollama:
   model: "llama3.1:8b"
   embeddingModel: "nomic-embed-text"
   persistence:
-    enabled: true
+    enabled: false
     size: 20Gi
     storageClass: ""
   resources:
