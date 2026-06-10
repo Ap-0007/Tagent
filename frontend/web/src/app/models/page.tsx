@@ -44,20 +44,36 @@ export default function ModelsPage() {
     const [keyInputs, setKeyInputs] = useState<Record<string, string>>({});
     const [showKey, setShowKey] = useState<Record<string, boolean>>({});
     const [savingKey, setSavingKey] = useState<string | null>(null);
+    const [ollamaReady, setOllamaReady] = useState(true);
 
     const fetchData = useCallback(async () => {
         try {
-            const [catalogRes, installedRes, activeRes, cloudKeysRes] = await Promise.all([
-                getModelCatalog(),
-                getInstalledModels(),
-                getActiveModel(),
-                getCloudKeys(),
-            ]);
+            // Catalog is served by AI Engine (always available even if Ollama is down)
+            const catalogRes = await getModelCatalog();
             setCatalog(catalogRes.local_models);
             setCloudProviders(catalogRes.cloud_providers);
-            setInstalled(installedRes.models);
-            setActive(activeRes);
-            setCloudKeys(cloudKeysRes.providers);
+
+            // These depend on Ollama being reachable — handle gracefully
+            try {
+                const [installedRes, activeRes] = await Promise.all([
+                    getInstalledModels(),
+                    getActiveModel(),
+                ]);
+                setInstalled(installedRes.models);
+                setActive(activeRes);
+                setOllamaReady(true);
+            } catch {
+                // Ollama not ready yet — that's OK, show catalog anyway
+                setInstalled([]);
+                setOllamaReady(false);
+            }
+
+            // Cloud keys don't depend on Ollama
+            try {
+                const cloudKeysRes = await getCloudKeys();
+                setCloudKeys(cloudKeysRes.providers);
+            } catch { /* ignore */ }
+
             setError(null);
         } catch (e: any) {
             setError(e.message || "Failed to load model data");
@@ -206,6 +222,25 @@ export default function ModelsPage() {
                     <div className="text-xs text-slate-500">
                         Endpoint: <span className="font-mono">{active.endpoint}</span>
                     </div>
+                </div>
+            )}
+
+            {/* Ollama starting up */}
+            {!ollamaReady && !error && (
+                <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4 flex items-center gap-4">
+                    <div className="w-10 h-10 rounded-lg bg-amber-500/20 flex items-center justify-center">
+                        <Loader2 className="w-5 h-5 text-amber-400 animate-spin" />
+                    </div>
+                    <div className="flex-1">
+                        <p className="text-sm font-medium text-amber-200">Ollama is starting up...</p>
+                        <p className="text-xs text-amber-300/60 mt-0.5">
+                            The Ollama pod is still initializing. You can browse the catalog below.
+                            Models will be installable once Ollama is ready (usually 30-60 seconds).
+                        </p>
+                    </div>
+                    <button onClick={() => { setLoading(true); fetchData(); }} className="px-3 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs hover:bg-amber-500/20 transition">
+                        Retry
+                    </button>
                 </div>
             )}
 

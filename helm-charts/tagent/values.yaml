@@ -88,9 +88,6 @@ ollama:
     enabled: false
     size: 20Gi
     storageClass: ""
-  resources:
-    requests: { cpu: "1", memory: 6Gi }
-    limits: { cpu: "4", memory: 12Gi }
 
 # ===== NIGHT GUARDIAN =====
 
