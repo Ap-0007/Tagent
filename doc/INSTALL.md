@@ -184,3 +184,14 @@ kubectl get all -n tagent
 # Delete the namespace and everything inside it
 kubectl delete namespace tagent
 ```
+
+```bash
+# Check all pods are Running
+kubectl get pods -n tagent
+
+# Check Ollama is responding
+kubectl exec -n tagent deploy/tagent-ollama -- ollama list
+
+# Check AI Engine can reach Ollama
+kubectl exec -n tagent deploy/tagent-ai-engine -- curl -s http://tagent-ollama:11434/api/tags
+```

@@ -72,6 +72,18 @@ spec:
             # Keep Ollama lightweight on startup — models are pulled via the UI
             - name: OLLAMA_KEEP_ALIVE
               value: "5m"
+          # Auto-pull the default small model + embedding model on first start.
+          # Users can switch to bigger models from the AI Models UI.
+          lifecycle:
+            postStart:
+              exec:
+                command:
+                  - sh
+                  - -c
+                  - |
+                    sleep 10
+                    ollama pull {{ .Values.ollama.model }} || true
+                    ollama pull {{ .Values.ollama.embeddingModel }} || true
           # Readiness: only mark ready when Ollama HTTP API responds
           readinessProbe:
             httpGet:

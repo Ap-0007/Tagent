@@ -82,7 +82,7 @@ ollama:
     repository: ollama/ollama
     tag: latest
     pullPolicy: IfNotPresent
-  model: "llama3.1:8b"
+  model: "llama3.2:1b"
   embeddingModel: "nomic-embed-text"
   persistence:
     enabled: false
