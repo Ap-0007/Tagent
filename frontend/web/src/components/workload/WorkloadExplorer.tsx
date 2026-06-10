@@ -27,43 +27,69 @@ function mapPodToRow(p: PodInfo): Pod {
     const cpuPercent = cpuReq > 0 ? Math.round((cpuUsed / cpuReq) * 100) : 0;
     const memPercent = memReq > 0 ? Math.round((memUsed / memReq) * 100) : 0;
 
-    const cpuColor = cpuPercent > 80 ? "#f85149" : cpuPercent > 60 ? "#f0883e" : "#3fb950";
-    const memColor = memPercent > 80 ? "#f85149" : memPercent > 60 ? "#f0883e" : "#3fb950";
+    // Color based on actual usage thresholds
+    const cpuColor = cpuPercent > 80 ? "#f85149" : cpuPercent > 60 ? "#f0883e" : cpuPercent > 30 ? "#22d3ee" : "#3fb950";
+    const memColor = memPercent > 80 ? "#f85149" : memPercent > 60 ? "#f0883e" : memPercent > 30 ? "#a371f7" : "#3fb950";
+
+    // Color based on restarts
+    const restartColor = p.restarts > 10 ? "#f85149" : p.restarts > 3 ? "#f0883e" : p.restarts > 0 ? "#d29922" : "#3fb950";
 
     const healthScore = Math.max(0, 100 - (p.restarts * 5) - (cpuPercent > 80 ? 20 : 0) - (memPercent > 80 ? 15 : 0) - (p.status !== "Running" ? 40 : 0));
     const risk: Pod["risk"] = healthScore >= 80 ? "Low" : healthScore >= 60 ? "Medium" : healthScore >= 40 ? "High" : "Critical";
 
     const status: Pod["status"] = p.status === "Running" ? "Running" : p.status === "Pending" ? "Pending" : "Restarting";
 
+    // Unique seed per pod for graph variation
+    const seed = p.name.split("").reduce((acc, ch) => acc + ch.charCodeAt(0), 0);
+
     let aiText = "Stable";
     let aiColor = "#3fb950";
     let aiConfidence = 94;
-    if (p.restarts > 5) { aiText = "CrashLoopBackOff"; aiColor = "#f85149"; aiConfidence = 89; }
-    else if (cpuPercent > 80) { aiText = "High CPU pressure"; aiColor = "#f85149"; aiConfidence = 87; }
-    else if (memPercent > 75) { aiText = "Memory growing fast"; aiColor = "#f0883e"; aiConfidence = 91; }
-    else if (p.status === "Pending") { aiText = "Pending"; aiColor = "#f0883e"; aiConfidence = 92; }
+    let aiIcon: "refresh" | undefined;
+    if (p.restarts > 10) { aiText = "CrashLoopBackOff"; aiColor = "#f85149"; aiConfidence = 95; aiIcon = "refresh"; }
+    else if (p.restarts > 3) { aiText = "High restart rate"; aiColor = "#f0883e"; aiConfidence = 88; aiIcon = "refresh"; }
+    else if (cpuPercent > 80) { aiText = "CPU throttled"; aiColor = "#f85149"; aiConfidence = 87; }
+    else if (memPercent > 75) { aiText = "Memory pressure"; aiColor = "#f0883e"; aiConfidence = 91; }
+    else if (p.status === "Pending") { aiText = "Scheduling issue"; aiColor = "#f0883e"; aiConfidence = 92; }
+    else if (p.status !== "Running") { aiText = "Unhealthy"; aiColor = "#f85149"; aiConfidence = 90; }
 
     return {
         name: p.name,
         type: "Deployment",
         namespace: p.namespace,
         status,
-        cpu: { percent: `${cpuPercent}%`, cores: p.cpu_used || "—", spark: generateSpark(cpuPercent), color: cpuColor },
-        memory: { percent: `${memPercent}%`, size: p.memory_used || "—", spark: generateSpark(memPercent), color: memColor },
-        restarts: { count: p.restarts, bars: generateBars(p.restarts), color: p.restarts > 3 ? "#f85149" : p.restarts > 0 ? "#f0883e" : "#3fb950" },
+        cpu: { percent: `${cpuPercent}%`, cores: p.cpu_used || "—", spark: generateSpark(cpuPercent, seed), color: cpuColor },
+        memory: { percent: `${memPercent}%`, size: p.memory_used || "—", spark: generateSpark(memPercent, seed + 100), color: memColor },
+        restarts: { count: p.restarts, bars: generateBars(p.restarts, seed + 200), color: restartColor },
         healthScore,
         risk,
-        aiAnalysis: { text: aiText, color: aiColor, confidence: aiConfidence },
+        aiAnalysis: { text: aiText, color: aiColor, confidence: aiConfidence, icon: aiIcon },
     };
 }
 
-function generateSpark(value: number): number[] {
-    const base = Math.max(2, Math.floor(value / 10));
-    return Array.from({ length: 10 }, (_, i) => Math.max(1, base + ((i * 3 + value) % 5) - 2));
+function generateSpark(value: number, seed?: number): number[] {
+    // Generate unique sparkline per pod using seed for variation
+    const s = seed || Math.floor(Math.random() * 1000);
+    if (value === 0) {
+        // Even at 0%, show a flat low line (not identical waves)
+        return Array.from({ length: 10 }, (_, i) => 1 + ((s + i * 7) % 3));
+    }
+    const base = Math.max(2, Math.floor(value / 8));
+    return Array.from({ length: 10 }, (_, i) => {
+        const noise = ((s + i * 13 + value * 3) % 7) - 3;
+        return Math.max(1, Math.min(18, base + noise));
+    });
 }
 
-function generateBars(restarts: number): number[] {
-    return Array.from({ length: 8 }, (_, i) => Math.max(1, Math.min(18, restarts + ((i * 7 + 3) % 6))));
+function generateBars(restarts: number, seed?: number): number[] {
+    const s = seed || Math.floor(Math.random() * 1000);
+    if (restarts === 0) {
+        return Array.from({ length: 8 }, () => 0);
+    }
+    return Array.from({ length: 8 }, (_, i) => {
+        const v = Math.max(1, Math.min(18, restarts + ((s + i * 11) % 8) - 4));
+        return v;
+    });
 }
 
 // ─── Component ───────────────────────────────────────────────────────────────
