@@ -39,7 +39,7 @@ jobs:
       - uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: "trivy-results.sarif"
-        if: always()
+        if: always() && hashFiles('trivy-results.sarif') != ''
 
   govulncheck:
     runs-on: ubuntu-latest
