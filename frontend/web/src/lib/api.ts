@@ -291,6 +291,19 @@ export async function getClusterSummary(): Promise<ClusterSummary> {
     return request<ClusterSummary>("/api/v1/clusters");
 }
 
+export interface ClusterInfo {
+    cluster_name: string;
+    environment: string;
+    nodes: number;
+    pods: number;
+    provider: string;
+    region: string;
+}
+
+export async function getClusterInfo(): Promise<ClusterInfo> {
+    return request<ClusterInfo>("/api/v1/cluster-info");
+}
+
 export async function getPods(namespace?: string): Promise<PodInfo[]> {
     const path = namespace ? `/api/v1/pods?namespace=${namespace}` : "/api/v1/pods";
     return request<PodInfo[]>(path);

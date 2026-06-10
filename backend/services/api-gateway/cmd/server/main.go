@@ -183,6 +183,7 @@ func main() {
 
 	// ===== Discovery Service =====
 	router.GET("/api/v1/clusters", proxyGet(discoveryURL, "/summary"))
+	router.GET("/api/v1/cluster-info", proxyGet(discoveryURL, "/cluster-info"))
 	router.GET("/api/v1/resources", proxyGet(discoveryURL, "/resources"))
 	router.GET("/api/v1/nodes", proxyGet(discoveryURL, "/nodes"))
 	router.GET("/api/v1/pods", proxyGetWithQuery(discoveryURL, "/pods"))

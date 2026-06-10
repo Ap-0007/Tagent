@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { Search, Bell, Radio, ChevronDown, Clock } from "lucide-react";
-import { getAdminInfo } from "@/lib/api";
+import { getAdminInfo, getClusterInfo } from "@/lib/api";
 
 const pageTitles: Record<string, { title: string; description: string; aiBadge?: boolean }> = {
     "/": { title: "Dashboard", description: "AI-powered Kubernetes incident intelligence, operational insights, and autonomous remediation." },
@@ -44,31 +44,31 @@ export function TopBar() {
 
     // Fetch admin info for cluster/environment display
     useEffect(() => {
-        // Try admin info first
-        getAdminInfo()
+        // Auto-detect cluster info from K8s (always works, no setup needed)
+        getClusterInfo()
             .then(info => {
                 if (info.cluster_name) setClusterName(info.cluster_name);
-                if (info.role) setEnvironment(info.role);
+                if (info.environment) setEnvironment(info.environment);
+            })
+            .catch(() => { });
+
+        // Try admin info for avatar name
+        getAdminInfo()
+            .then(info => {
                 if (info.name) setAdminInitial(info.name.charAt(0).toUpperCase());
+                // Override with admin-configured values if set
+                if (info.cluster_name) setClusterName(info.cluster_name);
+                if (info.role) setEnvironment(info.role);
             })
             .catch(() => {
-                // Fallback: use localStorage admin data
                 const data = localStorage.getItem("tagent_admin");
                 if (data) {
                     try {
                         const parsed = JSON.parse(data);
-                        if (parsed.cluster_name) setClusterName(parsed.cluster_name);
-                        if (parsed.role) setEnvironment(parsed.role);
                         if (parsed.name) setAdminInitial(parsed.name.charAt(0).toUpperCase());
                     } catch { /* ignore */ }
                 }
             });
-
-        // Set defaults if still empty after 2s
-        setTimeout(() => {
-            setClusterName(prev => prev === "—" ? "default" : prev);
-            setEnvironment(prev => prev === "—" ? "production" : prev);
-        }, 2000);
 
         // Fetch notifications from real events/incidents
         Promise.all([

@@ -90,6 +90,70 @@ func main() {
 		c.JSON(http.StatusOK, state.Summary)
 	})
 
+	// Auto-detect cluster name and environment from K8s context
+	router.GET("/cluster-info", func(c *gin.Context) {
+		stateLock.RLock()
+		defer stateLock.RUnlock()
+
+		// Detect cluster name from node labels or server URL
+		clusterName := os.Getenv("CLUSTER_NAME")
+		environment := os.Getenv("CLUSTER_ENVIRONMENT")
+
+		if clusterName == "" && state != nil && len(state.Nodes) > 0 {
+			// Try to extract from node provider ID (e.g., aws:///us-east-1a/i-xxx -> EKS)
+			nodeName := state.Nodes[0].Name
+			if strings.Contains(nodeName, "ip-") {
+				clusterName = "eks-cluster"
+				if environment == "" {
+					environment = "production"
+				}
+			} else if strings.Contains(nodeName, "gke-") {
+				clusterName = "gke-cluster"
+				if environment == "" {
+					environment = "production"
+				}
+			} else if strings.Contains(nodeName, "aks-") {
+				clusterName = "aks-cluster"
+				if environment == "" {
+					environment = "production"
+				}
+			} else if strings.Contains(nodeName, "minikube") || strings.Contains(nodeName, "kind") || strings.Contains(nodeName, "docker-desktop") {
+				clusterName = nodeName
+				if environment == "" {
+					environment = "development"
+				}
+			} else {
+				clusterName = nodeName
+				if environment == "" {
+					environment = "production"
+				}
+			}
+		}
+
+		if clusterName == "" {
+			clusterName = "default"
+		}
+		if environment == "" {
+			environment = "production"
+		}
+
+		nodeCount := 0
+		podCount := 0
+		if state != nil {
+			nodeCount = len(state.Nodes)
+			podCount = int(state.Summary.TotalPods)
+		}
+
+		c.JSON(200, gin.H{
+			"cluster_name": clusterName,
+			"environment":  environment,
+			"nodes":        nodeCount,
+			"pods":         podCount,
+			"provider":     detectProvider(state),
+			"region":       os.Getenv("AWS_REGION"),
+		})
+	})
+
 	router.GET("/nodes", func(c *gin.Context) {
 		stateLock.RLock()
 		defer stateLock.RUnlock()
@@ -381,4 +445,28 @@ func guessLogLevel(line string) string {
 		return "debug"
 	}
 	return "info"
+}
+
+// detectProvider auto-detects the cloud provider from node names
+func detectProvider(state *scanner.ClusterState) string {
+	if state == nil || len(state.Nodes) == 0 {
+		return "unknown"
+	}
+	nodeName := state.Nodes[0].Name
+	if strings.Contains(nodeName, "ip-") {
+		return "aws"
+	}
+	if strings.Contains(nodeName, "gke-") {
+		return "gcp"
+	}
+	if strings.Contains(nodeName, "aks-") {
+		return "azure"
+	}
+	if strings.Contains(nodeName, "minikube") {
+		return "minikube"
+	}
+	if strings.Contains(nodeName, "kind") {
+		return "kind"
+	}
+	return "self-hosted"
 }
