@@ -1408,7 +1408,7 @@ export async function switchModel(modelId: string, modelType: "chat" | "embeddin
 
 export async function deleteModel(modelId: string): Promise<{ status: string; model_id: string }> {
     return request<{ status: string; model_id: string }>("/api/v1/models/delete", {
-        method: "DELETE",
+        method: "POST",
         body: JSON.stringify({ model_id: modelId }),
     });
 }

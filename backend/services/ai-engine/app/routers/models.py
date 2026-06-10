@@ -297,7 +297,7 @@ async def switch_active_model(req: SwitchModelRequest):
     }
 
 
-@router.delete("/delete")
+@router.post("/delete")
 async def delete_model(req: DeleteModelRequest):
     """Delete a model from Ollama."""
     try:
