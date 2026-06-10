@@ -21,15 +21,15 @@ import {
 import {
     Cpu, Download, Trash2, Check, Loader2, AlertCircle, Key,
     Server, Cloud, Zap, Brain, HardDrive, RefreshCw, Eye, EyeOff,
-    ChevronDown, ChevronRight, Star, Shield,
+    ChevronDown, ChevronRight, Star, Shield, Plus, Package, RotateCcw,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-type Tab = "local" | "cloud";
+type Tab = "installed" | "catalog" | "cloud";
 type PullState = Record<string, { status: string; progress: number; error?: string | null }>;
 
 export default function ModelsPage() {
-    const [tab, setTab] = useState<Tab>("local");
+    const [tab, setTab] = useState<Tab>("installed");
     const [catalog, setCatalog] = useState<LocalModelInfo[]>([]);
     const [cloudProviders, setCloudProviders] = useState<CloudProviderInfo[]>([]);
     const [installed, setInstalled] = useState<InstalledModel[]>([]);
@@ -38,7 +38,9 @@ export default function ModelsPage() {
     const [pullStates, setPullStates] = useState<PullState>({});
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
-    const [expandedCategory, setExpandedCategory] = useState<string>("medium");
+    const [expandedCategory, setExpandedCategory] = useState<string>("small");
+    const [customModel, setCustomModel] = useState("");
+    const [deletingModel, setDeletingModel] = useState<string | null>(null);
 
     // Cloud key input state
     const [keyInputs, setKeyInputs] = useState<Record<string, string>>({});
@@ -48,12 +50,10 @@ export default function ModelsPage() {
 
     const fetchData = useCallback(async () => {
         try {
-            // Catalog is served by AI Engine (always available even if Ollama is down)
             const catalogRes = await getModelCatalog();
             setCatalog(catalogRes.local_models);
             setCloudProviders(catalogRes.cloud_providers);
 
-            // These depend on Ollama being reachable — handle gracefully
             try {
                 const [installedRes, activeRes] = await Promise.all([
                     getInstalledModels(),
@@ -63,12 +63,10 @@ export default function ModelsPage() {
                 setActive(activeRes);
                 setOllamaReady(true);
             } catch {
-                // Ollama not ready yet — that's OK, show catalog anyway
                 setInstalled([]);
                 setOllamaReady(false);
             }
 
-            // Cloud keys don't depend on Ollama
             try {
                 const cloudKeysRes = await getCloudKeys();
                 setCloudKeys(cloudKeysRes.providers);
@@ -97,7 +95,6 @@ export default function ModelsPage() {
                     const status = await getPullStatus(modelId);
                     setPullStates(prev => ({ ...prev, [modelId]: status }));
                     if (status.status === "ready" || status.status === "error") {
-                        // Refresh installed models
                         const res = await getInstalledModels();
                         setInstalled(res.models);
                     }
@@ -117,6 +114,13 @@ export default function ModelsPage() {
         }
     };
 
+    const handleCustomPull = async () => {
+        if (!customModel.trim()) return;
+        const modelId = customModel.trim();
+        setCustomModel("");
+        await handlePull(modelId);
+    };
+
     const handleSwitch = async (modelId: string, type: "chat" | "embedding") => {
         try {
             await switchModel(modelId, type);
@@ -130,13 +134,15 @@ export default function ModelsPage() {
     };
 
     const handleDelete = async (modelId: string) => {
-        if (!confirm(`Delete model "${modelId}"? This will free disk space but you'll need to re-pull it later.`)) return;
+        setDeletingModel(modelId);
         try {
             await deleteModel(modelId);
             setInstalled(prev => prev.filter(m => m.id !== modelId));
             setPullStates(prev => { const n = { ...prev }; delete n[modelId]; return n; });
         } catch (e: any) {
             setError(e.message);
+        } finally {
+            setDeletingModel(null);
         }
     };
 
@@ -167,6 +173,7 @@ export default function ModelsPage() {
 
     const isInstalled = (modelId: string) => installed.some(m => m.id === modelId || m.id.startsWith(modelId.split(":")[0]));
     const isActive = (modelId: string) => active?.chat_model === modelId || active?.embedding_model === modelId;
+    const totalDiskUsage = installed.reduce((sum, m) => sum + m.size, 0);
 
     const categories = [
         { key: "small", label: "Small Models", icon: Zap, desc: "< 4GB RAM — fast inference" },
@@ -220,7 +227,7 @@ export default function ModelsPage() {
                         </p>
                     </div>
                     <div className="text-xs text-slate-500">
-                        Endpoint: <span className="font-mono">{active.endpoint}</span>
+                        {installed.length} models · {formatBytes(totalDiskUsage)} used
                     </div>
                 </div>
             )}
@@ -256,13 +263,22 @@ export default function ModelsPage() {
             {/* Tabs */}
             <div className="flex gap-1 bg-navy-900/50 p-1 rounded-lg w-fit border border-white/5">
                 <button
-                    onClick={() => setTab("local")}
+                    onClick={() => setTab("installed")}
                     className={cn(
                         "px-4 py-2 rounded-md text-sm font-medium transition flex items-center gap-2",
-                        tab === "local" ? "bg-blue-500/20 text-blue-300 border border-blue-500/30" : "text-slate-400 hover:text-slate-200"
+                        tab === "installed" ? "bg-green-500/20 text-green-300 border border-green-500/30" : "text-slate-400 hover:text-slate-200"
                     )}
                 >
-                    <Server className="w-4 h-4" /> Local Models (Ollama)
+                    <Package className="w-4 h-4" /> Installed ({installed.length})
+                </button>
+                <button
+                    onClick={() => setTab("catalog")}
+                    className={cn(
+                        "px-4 py-2 rounded-md text-sm font-medium transition flex items-center gap-2",
+                        tab === "catalog" ? "bg-blue-500/20 text-blue-300 border border-blue-500/30" : "text-slate-400 hover:text-slate-200"
+                    )}
+                >
+                    <Server className="w-4 h-4" /> Model Catalog
                 </button>
                 <button
                     onClick={() => setTab("cloud")}
@@ -275,18 +291,130 @@ export default function ModelsPage() {
                 </button>
             </div>
 
-            {/* LOCAL MODELS TAB */}
-            {tab === "local" && (
+            {/* INSTALLED MODELS TAB */}
+            {tab === "installed" && (
                 <div className="space-y-4">
-                    {/* Installed count */}
+                    {/* Custom model pull */}
+                    <div className="rounded-xl border border-white/5 bg-navy-900/30 p-4">
+                        <p className="text-sm font-medium text-slate-200 mb-2 flex items-center gap-2">
+                            <Plus className="w-4 h-4 text-blue-400" />
+                            Pull a custom model
+                        </p>
+                        <p className="text-xs text-slate-500 mb-3">
+                            Enter any Ollama model name (e.g. <code className="text-slate-400">codellama:7b</code>, <code className="text-slate-400">vicuna:13b</code>, <code className="text-slate-400">neural-chat</code>)
+                        </p>
+                        <div className="flex gap-2">
+                            <input
+                                type="text"
+                                value={customModel}
+                                onChange={e => setCustomModel(e.target.value)}
+                                onKeyDown={e => e.key === "Enter" && handleCustomPull()}
+                                placeholder="model-name:tag (e.g. mistral:7b)"
+                                className="flex-1 px-3 py-2 rounded-lg bg-black/30 border border-white/10 text-sm text-slate-200 placeholder:text-slate-600 focus:border-blue-500/50 focus:outline-none font-mono"
+                            />
+                            <button
+                                onClick={handleCustomPull}
+                                disabled={!customModel.trim()}
+                                className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-blue-500/10 border border-blue-500/30 text-blue-300 text-xs font-medium hover:bg-blue-500/20 transition disabled:opacity-40 disabled:cursor-not-allowed"
+                            >
+                                <Download className="w-3.5 h-3.5" /> Pull Model
+                            </button>
+                        </div>
+                        {/* Active pull progress */}
+                        {Object.entries(pullStates).filter(([_, s]) => s.status === "pulling").map(([modelId, state]) => (
+                            <div key={modelId} className="mt-3 flex items-center gap-3 p-2 rounded-lg bg-blue-500/5 border border-blue-500/10">
+                                <Loader2 className="w-4 h-4 animate-spin text-blue-400 shrink-0" />
+                                <span className="text-xs text-slate-300 font-mono">{modelId}</span>
+                                <div className="flex-1 h-2 rounded-full bg-white/10 overflow-hidden">
+                                    <div className="h-full rounded-full bg-blue-500 transition-all duration-500" style={{ width: `${state.progress}%` }} />
+                                </div>
+                                <span className="text-xs text-blue-300 w-8">{state.progress}%</span>
+                            </div>
+                        ))}
+                    </div>
+
+                    {/* Installed models list */}
+                    {installed.length === 0 ? (
+                        <div className="rounded-xl border border-white/5 bg-navy-900/30 p-8 text-center">
+                            <Package className="w-12 h-12 text-slate-600 mx-auto mb-3" />
+                            <p className="text-sm text-slate-400">No models installed yet</p>
+                            <p className="text-xs text-slate-500 mt-1">Go to the Model Catalog tab to install your first model</p>
+                            <button onClick={() => setTab("catalog")} className="mt-4 px-4 py-2 rounded-lg bg-blue-500/10 border border-blue-500/30 text-blue-300 text-xs font-medium hover:bg-blue-500/20 transition">
+                                Browse Catalog
+                            </button>
+                        </div>
+                    ) : (
+                        <div className="rounded-xl border border-white/5 bg-navy-900/30 overflow-hidden">
+                            <div className="px-4 py-3 border-b border-white/5 flex items-center justify-between">
+                                <p className="text-sm font-medium text-slate-200">
+                                    {installed.length} model{installed.length !== 1 ? "s" : ""} installed
+                                </p>
+                                <p className="text-xs text-slate-500">
+                                    Total disk usage: <span className="text-slate-300 font-mono">{formatBytes(totalDiskUsage)}</span>
+                                </p>
+                            </div>
+                            <div className="divide-y divide-white/5">
+                                {installed.map(model => {
+                                    const modelActive = isActive(model.id);
+                                    const isEmbedding = model.id.includes("embed") || model.id.includes("nomic");
+                                    return (
+                                        <div key={model.id} className="flex items-center gap-4 px-4 py-3 hover:bg-white/[0.02] transition">
+                                            <div className="w-9 h-9 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center">
+                                                {isEmbedding ? <HardDrive className="w-4 h-4 text-purple-400" /> : <Brain className="w-4 h-4 text-blue-400" />}
+                                            </div>
+                                            <div className="flex-1 min-w-0">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-sm font-medium text-slate-200 font-mono">{model.id}</span>
+                                                    {modelActive && (
+                                                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-500/20 text-green-300 border border-green-500/30">ACTIVE</span>
+                                                    )}
+                                                </div>
+                                                <p className="text-xs text-slate-500 mt-0.5">
+                                                    {model.size_human} · {model.parameter_size || model.family || "unknown"} · {model.quantization || "default"}
+                                                </p>
+                                            </div>
+                                            <div className="flex items-center gap-2 shrink-0">
+                                                {!modelActive && (
+                                                    <button
+                                                        onClick={() => handleSwitch(model.id, isEmbedding ? "embedding" : "chat")}
+                                                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-green-500/10 border border-green-500/30 text-green-300 text-xs font-medium hover:bg-green-500/20 transition"
+                                                    >
+                                                        <Check className="w-3.5 h-3.5" /> Activate
+                                                    </button>
+                                                )}
+                                                <button
+                                                    onClick={() => {
+                                                        if (confirm(`Delete "${model.id}" (${model.size_human})?\n\nThis frees disk space. You can re-install it anytime from the catalog.`)) {
+                                                            handleDelete(model.id);
+                                                        }
+                                                    }}
+                                                    disabled={deletingModel === model.id}
+                                                    className="flex items-center gap-1.5 p-1.5 rounded-lg text-slate-500 hover:text-red-400 hover:bg-red-500/10 transition disabled:opacity-40"
+                                                    title={`Delete ${model.id}`}
+                                                >
+                                                    {deletingModel === model.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                                                </button>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {/* MODEL CATALOG TAB */}
+            {tab === "catalog" && (
+                <div className="space-y-4">
                     <p className="text-xs text-slate-500">
-                        {installed.length} model{installed.length !== 1 ? "s" : ""} installed ·
-                        Select a model to install it automatically on your cluster
+                        Browse and install models. Click Install to download directly to your cluster.
                     </p>
 
                     {categories.map(cat => {
                         const models = catalog.filter(m => m.category === cat.key);
                         const isExpanded = expandedCategory === cat.key;
+                        const installedCount = models.filter(m => isInstalled(m.id)).length;
                         return (
                             <div key={cat.key} className="rounded-xl border border-white/5 bg-navy-900/30 overflow-hidden">
                                 <button
@@ -298,7 +426,10 @@ export default function ModelsPage() {
                                         <span className="text-sm font-medium text-slate-200">{cat.label}</span>
                                         <span className="ml-2 text-xs text-slate-500">{cat.desc}</span>
                                     </div>
-                                    <span className="text-xs text-slate-500 mr-2">{models.length} models</span>
+                                    <span className="text-xs text-slate-500 mr-2">
+                                        {installedCount > 0 && <span className="text-green-400">{installedCount} installed · </span>}
+                                        {models.length} models
+                                    </span>
                                     {isExpanded ? <ChevronDown className="w-4 h-4 text-slate-500" /> : <ChevronRight className="w-4 h-4 text-slate-500" />}
                                 </button>
 
@@ -313,7 +444,6 @@ export default function ModelsPage() {
 
                                             return (
                                                 <div key={model.id} className="flex items-center gap-4 px-4 py-3 hover:bg-white/[0.02] transition">
-                                                    {/* Model info */}
                                                     <div className="flex-1 min-w-0">
                                                         <div className="flex items-center gap-2">
                                                             <span className="text-sm font-medium text-slate-200">{model.name}</span>
@@ -323,20 +453,19 @@ export default function ModelsPage() {
                                                             {modelActive && (
                                                                 <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-500/20 text-green-300 border border-green-500/30">ACTIVE</span>
                                                             )}
+                                                            {modelInstalled && !modelActive && (
+                                                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-500/20 text-slate-400 border border-slate-500/30">INSTALLED</span>
+                                                            )}
                                                         </div>
                                                         <p className="text-xs text-slate-500 mt-0.5">{model.description}</p>
                                                         <p className="text-[11px] text-slate-600 font-mono mt-0.5">{model.id} · {model.size}</p>
                                                     </div>
 
-                                                    {/* Actions */}
                                                     <div className="flex items-center gap-2 shrink-0">
                                                         {isPulling && (
                                                             <div className="flex items-center gap-2">
                                                                 <div className="w-24 h-2 rounded-full bg-white/10 overflow-hidden">
-                                                                    <div
-                                                                        className="h-full rounded-full bg-blue-500 transition-all duration-500"
-                                                                        style={{ width: `${pullState.progress}%` }}
-                                                                    />
+                                                                    <div className="h-full rounded-full bg-blue-500 transition-all duration-500" style={{ width: `${pullState.progress}%` }} />
                                                                 </div>
                                                                 <span className="text-xs text-blue-300 w-8">{pullState.progress}%</span>
                                                                 <Loader2 className="w-4 h-4 animate-spin text-blue-400" />
@@ -344,13 +473,16 @@ export default function ModelsPage() {
                                                         )}
 
                                                         {pullError && (
-                                                            <span className="text-xs text-red-400">Failed</span>
+                                                            <button onClick={() => handlePull(model.id)} className="flex items-center gap-1 text-xs text-red-400 hover:text-red-300">
+                                                                <RotateCcw className="w-3 h-3" /> Retry
+                                                            </button>
                                                         )}
 
-                                                        {!modelInstalled && !isPulling && (
+                                                        {!modelInstalled && !isPulling && !pullError && (
                                                             <button
                                                                 onClick={() => handlePull(model.id)}
-                                                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-500/10 border border-blue-500/30 text-blue-300 text-xs font-medium hover:bg-blue-500/20 transition"
+                                                                disabled={!ollamaReady}
+                                                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-500/10 border border-blue-500/30 text-blue-300 text-xs font-medium hover:bg-blue-500/20 transition disabled:opacity-40 disabled:cursor-not-allowed"
                                                             >
                                                                 <Download className="w-3.5 h-3.5" /> Install
                                                             </button>
@@ -367,7 +499,11 @@ export default function ModelsPage() {
 
                                                         {modelInstalled && (
                                                             <button
-                                                                onClick={() => handleDelete(model.id)}
+                                                                onClick={() => {
+                                                                    if (confirm(`Delete "${model.id}" (${model.size})? You can re-install it anytime.`)) {
+                                                                        handleDelete(model.id);
+                                                                    }
+                                                                }}
                                                                 className="p-1.5 rounded-lg text-slate-500 hover:text-red-400 hover:bg-red-500/10 transition"
                                                                 title="Delete model"
                                                             >
@@ -424,7 +560,6 @@ export default function ModelsPage() {
                                     )}
                                 </div>
 
-                                {/* Key input */}
                                 <div className="flex gap-2">
                                     <div className="relative flex-1">
                                         <input
@@ -466,4 +601,11 @@ export default function ModelsPage() {
             )}
         </div>
     );
+}
+
+function formatBytes(bytes: number): string {
+    if (bytes === 0) return "0 B";
+    const units = ["B", "KB", "MB", "GB", "TB"];
+    const i = Math.floor(Math.log(bytes) / Math.log(1024));
+    return `${(bytes / Math.pow(1024, i)).toFixed(1)} ${units[i]}`;
 }
