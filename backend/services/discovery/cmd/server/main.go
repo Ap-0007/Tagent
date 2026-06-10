@@ -14,6 +14,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"github.com/tagent-ai/tagent/backend/services/discovery/internal/cloud"
 	"github.com/tagent-ai/tagent/backend/services/discovery/internal/cost"
 	"github.com/tagent-ai/tagent/backend/services/discovery/internal/k8s"
 	"github.com/tagent-ai/tagent/backend/services/discovery/internal/scanner"
@@ -158,6 +159,276 @@ func main() {
 		stateLock.RLock()
 		defer stateLock.RUnlock()
 		c.JSON(http.StatusOK, state.Nodes)
+	})
+
+	// GET /nodes/:name — Full node detail from K8s API (real data)
+	router.GET("/nodes/:name", func(c *gin.Context) {
+		nodeName := c.Param("name")
+		ctx := c.Request.Context()
+
+		// Get node from K8s API
+		node, err := client.CoreV1().Nodes().Get(ctx, nodeName, metav1.GetOptions{})
+		if err != nil {
+			c.JSON(404, gin.H{"error": "node not found", "name": nodeName})
+			return
+		}
+
+		// Basic info
+		status := "NotReady"
+		conditions := []gin.H{}
+		for _, cond := range node.Status.Conditions {
+			conditions = append(conditions, gin.H{
+				"type":    string(cond.Type),
+				"status":  string(cond.Status),
+				"reason":  cond.Reason,
+				"message": cond.Message,
+			})
+			if cond.Type == "Ready" && cond.Status == "True" {
+				status = "Ready"
+			}
+		}
+
+		role := "worker"
+		if _, ok := node.Labels["node-role.kubernetes.io/control-plane"]; ok {
+			role = "control-plane"
+		} else if _, ok := node.Labels["node-role.kubernetes.io/master"]; ok {
+			role = "master"
+		}
+
+		var intIP, extIP string
+		for _, addr := range node.Status.Addresses {
+			if addr.Type == "InternalIP" {
+				intIP = addr.Address
+			}
+			if addr.Type == "ExternalIP" {
+				extIP = addr.Address
+			}
+		}
+
+		// Node info from status
+		nodeInfo := node.Status.NodeInfo
+		providerID := node.Spec.ProviderID
+		podCIDR := node.Spec.PodCIDR
+
+		// Instance type from labels
+		instanceType := node.Labels["node.kubernetes.io/instance-type"]
+		if instanceType == "" {
+			instanceType = node.Labels["beta.kubernetes.io/instance-type"]
+		}
+
+		// AZ from labels
+		az := node.Labels["topology.kubernetes.io/zone"]
+		if az == "" {
+			az = node.Labels["failure-domain.beta.kubernetes.io/zone"]
+		}
+
+		// Region from labels
+		region := node.Labels["topology.kubernetes.io/region"]
+		if region == "" {
+			region = node.Labels["failure-domain.beta.kubernetes.io/region"]
+		}
+
+		// CPU & Memory usage from metrics-server
+		cpuUsed := ""
+		memUsed := ""
+		cpuPercent := 0.0
+		memPercent := 0.0
+		if metrics != nil {
+			nodeMetric, err := metrics.MetricsV1beta1().NodeMetricses().Get(ctx, nodeName, metav1.GetOptions{})
+			if err == nil {
+				cpuUsed = nodeMetric.Usage.Cpu().String()
+				memUsed = nodeMetric.Usage.Memory().String()
+				cpuCap := node.Status.Capacity.Cpu().AsApproximateFloat64()
+				memCap := node.Status.Capacity.Memory().AsApproximateFloat64()
+				if cpuCap > 0 {
+					cpuPercent = (nodeMetric.Usage.Cpu().AsApproximateFloat64() / cpuCap) * 100
+				}
+				if memCap > 0 {
+					memPercent = (nodeMetric.Usage.Memory().AsApproximateFloat64() / memCap) * 100
+				}
+			}
+		}
+
+		// Get pods on this node
+		podList, err := client.CoreV1().Pods("").List(ctx, metav1.ListOptions{
+			FieldSelector: "spec.nodeName=" + nodeName,
+		})
+		podCount := 0
+		var pods []gin.H
+		if err == nil {
+			podCount = len(podList.Items)
+			for _, p := range podList.Items {
+				podStatus := string(p.Status.Phase)
+				var restarts int32
+				for _, cs := range p.Status.ContainerStatuses {
+					restarts += cs.RestartCount
+					if cs.State.Waiting != nil && cs.State.Waiting.Reason != "" {
+						podStatus = cs.State.Waiting.Reason
+					}
+				}
+				var cpuReq, memReq string
+				for _, container := range p.Spec.Containers {
+					if cpu, ok := container.Resources.Requests[corev1.ResourceCPU]; ok {
+						cpuReq = cpu.String()
+					}
+					if mem, ok := container.Resources.Requests[corev1.ResourceMemory]; ok {
+						memReq = mem.String()
+					}
+				}
+				pods = append(pods, gin.H{
+					"name":       p.Name,
+					"namespace":  p.Namespace,
+					"status":     podStatus,
+					"cpu":        cpuReq,
+					"memory":     memReq,
+					"restarts":   restarts,
+					"age":        time.Since(p.CreationTimestamp.Time).Round(time.Minute).String(),
+					"containers": len(p.Spec.Containers),
+				})
+			}
+		}
+		if pods == nil {
+			pods = []gin.H{}
+		}
+
+		// Labels & annotations
+		labels := node.Labels
+		annotations := node.Annotations
+
+		// Taints
+		var taints []gin.H
+		for _, t := range node.Spec.Taints {
+			taints = append(taints, gin.H{
+				"key":    t.Key,
+				"value":  t.Value,
+				"effect": string(t.Effect),
+			})
+		}
+		if taints == nil {
+			taints = []gin.H{}
+		}
+
+		// Images cached
+		var images []string
+		for _, img := range node.Status.Images {
+			if len(img.Names) > 0 {
+				images = append(images, img.Names[len(img.Names)-1])
+			}
+		}
+
+		// Events for this node
+		events, _ := client.CoreV1().Events("").List(ctx, metav1.ListOptions{
+			FieldSelector: fmt.Sprintf("involvedObject.name=%s,involvedObject.kind=Node", nodeName),
+		})
+		var nodeEvents []gin.H
+		if events != nil {
+			for _, ev := range events.Items {
+				nodeEvents = append(nodeEvents, gin.H{
+					"type":      ev.Type,
+					"reason":    ev.Reason,
+					"message":   ev.Message,
+					"count":     ev.Count,
+					"first":     ev.FirstTimestamp.Time.Format(time.RFC3339),
+					"last":      ev.LastTimestamp.Time.Format(time.RFC3339),
+					"component": ev.Source.Component,
+				})
+			}
+		}
+		if nodeEvents == nil {
+			nodeEvents = []gin.H{}
+		}
+
+		c.JSON(200, gin.H{
+			"name":               nodeName,
+			"status":             status,
+			"role":               role,
+			"kubernetes_version": nodeInfo.KubeletVersion,
+			"container_runtime":  nodeInfo.ContainerRuntimeVersion,
+			"os":                 nodeInfo.OSImage,
+			"os_type":            nodeInfo.OperatingSystem,
+			"architecture":       nodeInfo.Architecture,
+			"kernel":             nodeInfo.KernelVersion,
+			"internal_ip":        intIP,
+			"external_ip":        extIP,
+			"pod_cidr":           podCIDR,
+			"provider_id":        providerID,
+			"instance_type":      instanceType,
+			"availability_zone":  az,
+			"region":             region,
+			"created_at":         node.CreationTimestamp.Time.Format(time.RFC3339),
+			"age":                time.Since(node.CreationTimestamp.Time).Round(time.Hour).String(),
+			"cpu_capacity":       node.Status.Capacity.Cpu().String(),
+			"memory_capacity":    node.Status.Capacity.Memory().String(),
+			"pod_capacity":       node.Status.Capacity.Pods().String(),
+			"ephemeral_storage":  node.Status.Capacity.StorageEphemeral().String(),
+			"cpu_used":           cpuUsed,
+			"cpu_percent":        int(cpuPercent),
+			"memory_used":        memUsed,
+			"memory_percent":     int(memPercent),
+			"pod_count":          podCount,
+			"pods":               pods,
+			"conditions":         conditions,
+			"labels":             labels,
+			"annotations":        annotations,
+			"taints":             taints,
+			"images":             images,
+			"image_count":        len(images),
+			"events":             nodeEvents,
+		})
+	})
+
+	// GET /nodes/:name/cloud — AWS EC2 instance details (real data from AWS API)
+	router.GET("/nodes/:name/cloud", func(c *gin.Context) {
+		nodeName := c.Param("name")
+		ctx := c.Request.Context()
+
+		// Get node to extract provider ID
+		node, err := client.CoreV1().Nodes().Get(ctx, nodeName, metav1.GetOptions{})
+		if err != nil {
+			c.JSON(404, gin.H{"error": "node not found", "name": nodeName})
+			return
+		}
+
+		providerID := node.Spec.ProviderID
+		instanceID := cloud.ParseInstanceIDFromProviderID(providerID)
+		if instanceID == "" {
+			c.JSON(200, gin.H{
+				"available": false,
+				"message":   "Not an AWS EC2 instance or ProviderID not set",
+				"provider_id": providerID,
+			})
+			return
+		}
+
+		// Initialize AWS client
+		awsClient, err := cloud.NewAWSClient()
+		if err != nil {
+			c.JSON(200, gin.H{
+				"available": false,
+				"message":   fmt.Sprintf("AWS SDK not configured: %v", err),
+				"instance_id": instanceID,
+			})
+			return
+		}
+
+		detail, err := awsClient.GetInstanceDetail(ctx, instanceID)
+		if err != nil {
+			c.JSON(200, gin.H{
+				"available":   false,
+				"message":     fmt.Sprintf("Failed to fetch EC2 details: %v", err),
+				"instance_id": instanceID,
+			})
+			return
+		}
+
+		// Also get status checks
+		statusChecks := awsClient.GetInstanceStatus(ctx, instanceID)
+		detail.StatusChecks = statusChecks
+
+		c.JSON(200, gin.H{
+			"available": true,
+			"instance":  detail,
+		})
 	})
 
 	router.GET("/pods", func(c *gin.Context) {

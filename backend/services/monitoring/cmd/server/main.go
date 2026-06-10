@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -203,6 +204,125 @@ func main() {
 	router.GET("/incidents", func(c *gin.Context) {
 		incidents := det.GetIncidents()
 		c.JSON(200, gin.H{"incidents": incidents, "total": len(incidents)})
+	})
+
+	// Node Metrics History (time-series for graphs)
+	router.GET("/metrics/node/:name", func(c *gin.Context) {
+		nodeName := c.Param("name")
+		rangeParam := c.DefaultQuery("range", "1h")
+
+		// Parse range to Prometheus range parameters
+		var duration string
+		var step string
+		switch rangeParam {
+		case "1h":
+			duration = "1h"
+			step = "60"
+		case "3h":
+			duration = "3h"
+			step = "120"
+		case "12h":
+			duration = "12h"
+			step = "300"
+		case "1d":
+			duration = "24h"
+			step = "600"
+		case "3d":
+			duration = "72h"
+			step = "1800"
+		case "1w":
+			duration = "168h"
+			step = "3600"
+		default:
+			duration = "1h"
+			step = "60"
+		}
+
+		end := time.Now()
+		parsedDur, _ := time.ParseDuration(duration)
+		start := end.Add(-parsedDur)
+
+		// Build queries using node name or IP
+		// K8s node names often match Prometheus instance labels (ip-x-x-x-x)
+		// We need to find the node's internal IP first
+		nodeIP := nodeName
+		// Try to extract IP from the node name for EKS nodes (ip-10-0-3-126.ap-south-1.compute.internal)
+		if strings.Contains(nodeName, "ip-") {
+			parts := strings.Split(nodeName, ".")
+			if len(parts) > 0 {
+				ipPart := strings.TrimPrefix(parts[0], "ip-")
+				ipPart = strings.ReplaceAll(ipPart, "-", ".")
+				nodeIP = ipPart
+			}
+		}
+
+		// Instance selector: match by node IP (Prometheus node_exporter typically uses IP:port)
+		instanceFilter := fmt.Sprintf(`instance=~"%s.*"`, nodeIP)
+
+		// CPU Utilization
+		cpuQuery := fmt.Sprintf(`100 - (avg by(instance)(rate(node_cpu_seconds_total{mode="idle",%s}[5m])) * 100)`, instanceFilter)
+		cpuData := queryPromRange(cpuQuery, start, end, step)
+
+		// Memory Utilization
+		memQuery := fmt.Sprintf(`(1 - node_memory_MemAvailable_bytes{%s} / node_memory_MemTotal_bytes{%s}) * 100`, instanceFilter, instanceFilter)
+		memData := queryPromRange(memQuery, start, end, step)
+
+		// Network In (bytes/sec)
+		netInQuery := fmt.Sprintf(`sum(rate(node_network_receive_bytes_total{%s,device!~"lo|veth.*|docker.*|br-.*"}[5m]))`, instanceFilter)
+		netInData := queryPromRange(netInQuery, start, end, step)
+
+		// Network Out (bytes/sec)
+		netOutQuery := fmt.Sprintf(`sum(rate(node_network_transmit_bytes_total{%s,device!~"lo|veth.*|docker.*|br-.*"}[5m]))`, instanceFilter)
+		netOutData := queryPromRange(netOutQuery, start, end, step)
+
+		// Network Packets In
+		netPktInQuery := fmt.Sprintf(`sum(rate(node_network_receive_packets_total{%s,device!~"lo|veth.*|docker.*|br-.*"}[5m]))`, instanceFilter)
+		netPktInData := queryPromRange(netPktInQuery, start, end, step)
+
+		// Network Packets Out
+		netPktOutQuery := fmt.Sprintf(`sum(rate(node_network_transmit_packets_total{%s,device!~"lo|veth.*|docker.*|br-.*"}[5m]))`, instanceFilter)
+		netPktOutData := queryPromRange(netPktOutQuery, start, end, step)
+
+		// Disk Read IOPS
+		diskReadQuery := fmt.Sprintf(`sum(rate(node_disk_reads_completed_total{%s}[5m]))`, instanceFilter)
+		diskReadData := queryPromRange(diskReadQuery, start, end, step)
+
+		// Disk Write IOPS
+		diskWriteQuery := fmt.Sprintf(`sum(rate(node_disk_writes_completed_total{%s}[5m]))`, instanceFilter)
+		diskWriteData := queryPromRange(diskWriteQuery, start, end, step)
+
+		// Disk Usage Percent
+		diskUsageQuery := fmt.Sprintf(`(1 - node_filesystem_avail_bytes{%s,mountpoint="/"} / node_filesystem_size_bytes{%s,mountpoint="/"}) * 100`, instanceFilter, instanceFilter)
+		diskUsageData := queryPromRange(diskUsageQuery, start, end, step)
+
+		// Metadata no token (for CloudWatch-like metric)
+		metadataQuery := fmt.Sprintf(`sum(rate(node_network_receive_bytes_total{%s,device="lo"}[5m]))`, instanceFilter)
+		metadataData := queryPromRange(metadataQuery, start, end, step)
+
+		// CPU Credit Usage (T-type instances, from CloudWatch agent)
+		cpuCreditUsageQuery := fmt.Sprintf(`node_cpu_guest_seconds_total{%s}`, instanceFilter)
+		cpuCreditUsageData := queryPromRange(cpuCreditUsageQuery, start, end, step)
+
+		// CPU Credit Balance
+		cpuCreditBalanceQuery := fmt.Sprintf(`node_cpu_seconds_total{mode="steal",%s}`, instanceFilter)
+		cpuCreditBalanceData := queryPromRange(cpuCreditBalanceQuery, start, end, step)
+
+		c.JSON(200, gin.H{
+			"node":               nodeName,
+			"range":              rangeParam,
+			"cpu_utilization":    cpuData,
+			"memory_utilization": memData,
+			"network_in_bytes":   netInData,
+			"network_out_bytes":  netOutData,
+			"network_packets_in": netPktInData,
+			"network_packets_out": netPktOutData,
+			"disk_read_iops":     diskReadData,
+			"disk_write_iops":    diskWriteData,
+			"disk_usage_percent": diskUsageData,
+			"metadata_no_token":  metadataData,
+			"cpu_credit_usage":   cpuCreditUsageData,
+			"cpu_credit_balance": cpuCreditBalanceData,
+		})
 	})
 
 	// Log Search (Loki integration with K8s fallback)
@@ -473,4 +593,56 @@ func formatBytes(bytes float64) string {
 		return fmt.Sprintf("%.1f KB", bytes/1e3)
 	}
 	return fmt.Sprintf("%.0f B", bytes)
+}
+
+// queryPromRange executes a Prometheus range query and returns time-series data points.
+func queryPromRange(query string, start, end time.Time, step string) []gin.H {
+	u := fmt.Sprintf("%s/api/v1/query_range?query=%s&start=%d&end=%d&step=%s",
+		prometheusURL,
+		url.QueryEscape(query),
+		start.Unix(),
+		end.Unix(),
+		step,
+	)
+	resp, err := http.Get(u)
+	if err != nil {
+		return []gin.H{}
+	}
+	defer resp.Body.Close()
+
+	var result struct {
+		Data struct {
+			Result []struct {
+				Values [][]interface{} `json:"values"`
+			} `json:"result"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return []gin.H{}
+	}
+	if len(result.Data.Result) == 0 {
+		return []gin.H{}
+	}
+
+	var points []gin.H
+	for _, v := range result.Data.Result[0].Values {
+		if len(v) >= 2 {
+			timestamp := 0.0
+			if ts, ok := v[0].(float64); ok {
+				timestamp = ts
+			}
+			value := 0.0
+			if val, ok := v[1].(string); ok {
+				fmt.Sscanf(val, "%f", &value)
+			}
+			points = append(points, gin.H{
+				"timestamp": time.Unix(int64(timestamp), 0).UTC().Format(time.RFC3339),
+				"value":     value,
+			})
+		}
+	}
+	if points == nil {
+		points = []gin.H{}
+	}
+	return points
 }
