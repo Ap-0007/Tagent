@@ -39,7 +39,7 @@ function saveSessions(sessions: ChatSession[]) {
 }
 
 function generateId(): string {
-    return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+    return crypto.randomUUID();
 }
 
 function generateTitle(message: string): string {
