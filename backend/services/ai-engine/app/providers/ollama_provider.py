@@ -16,7 +16,7 @@ class OllamaProvider(LLMProvider):
         embedding_model: str | None = None,
     ):
         self.endpoint = (endpoint or os.getenv("OLLAMA_ENDPOINT", "http://localhost:11434")).rstrip("/")
-        self.model = model or os.getenv("OLLAMA_MODEL", "llama3.1:8b")
+        self.model = model or os.getenv("OLLAMA_MODEL", "llama3.2:1b")
         self.embedding_model = embedding_model or os.getenv("OLLAMA_EMBEDDING_MODEL", "nomic-embed-text")
         self._client = httpx.AsyncClient(timeout=120.0)
 

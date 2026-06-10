@@ -22,14 +22,14 @@ NAMESPACE = os.getenv("TAGENT_NAMESPACE", "tagent")
 
 LOCAL_MODELS_CATALOG = [
     # Small models (< 4GB) — fast, good for simple tasks
-    {"id": "llama3.2:1b", "name": "Llama 3.2 1B", "size": "1.3GB", "category": "small", "description": "Ultra-fast, basic reasoning and chat", "provider": "ollama"},
+    {"id": "llama3.2:1b", "name": "Llama 3.2 1B", "size": "1.3GB", "category": "small", "description": "Ultra-fast, basic reasoning and chat", "provider": "ollama", "default": True},
     {"id": "llama3.2:3b", "name": "Llama 3.2 3B", "size": "2.0GB", "category": "small", "description": "Fast inference, good for summarization", "provider": "ollama"},
     {"id": "phi3:mini", "name": "Phi-3 Mini (3.8B)", "size": "2.3GB", "category": "small", "description": "Microsoft's compact reasoning model", "provider": "ollama"},
     {"id": "gemma2:2b", "name": "Gemma 2 2B", "size": "1.6GB", "category": "small", "description": "Google's efficient small model", "provider": "ollama"},
     {"id": "qwen2.5:3b", "name": "Qwen 2.5 3B", "size": "1.9GB", "category": "small", "description": "Alibaba's multilingual small model", "provider": "ollama"},
 
     # Medium models (4-10GB) — balanced performance
-    {"id": "llama3.1:8b", "name": "Llama 3.1 8B", "size": "4.7GB", "category": "medium", "description": "Default — great balance of speed and intelligence", "provider": "ollama", "default": True},
+    {"id": "llama3.1:8b", "name": "Llama 3.1 8B", "size": "4.7GB", "category": "medium", "description": "Great balance of speed and intelligence", "provider": "ollama"},
     {"id": "mistral:7b", "name": "Mistral 7B", "size": "4.1GB", "category": "medium", "description": "Fast, strong at code and reasoning", "provider": "ollama"},
     {"id": "gemma2:9b", "name": "Gemma 2 9B", "size": "5.4GB", "category": "medium", "description": "Google's mid-range model, strong at analysis", "provider": "ollama"},
     {"id": "qwen2.5:7b", "name": "Qwen 2.5 7B", "size": "4.4GB", "category": "medium", "description": "Strong multilingual and coding capabilities", "provider": "ollama"},
@@ -297,7 +297,7 @@ async def switch_active_model(req: SwitchModelRequest):
     }
 
 
-@router.delete("/delete")
+@router.post("/delete")
 async def delete_model(req: DeleteModelRequest):
     """Delete a model from Ollama."""
     try:

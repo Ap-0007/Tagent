@@ -279,19 +279,7 @@ func main() {
 		c.Data(resp.StatusCode, "application/json", body)
 	})
 	router.POST("/api/v1/models/switch", proxyPost(aiEngineURL, "/api/v1/models/switch"))
-	router.DELETE("/api/v1/models/delete", func(c *gin.Context) {
-		reqBody, _ := io.ReadAll(c.Request.Body)
-		req, _ := http.NewRequest(http.MethodDelete, aiEngineURL+"/api/v1/models/delete", strings.NewReader(string(reqBody)))
-		req.Header.Set("Content-Type", "application/json")
-		resp, err := http.DefaultClient.Do(req)
-		if err != nil {
-			c.JSON(502, gin.H{"error": "upstream unreachable"})
-			return
-		}
-		defer resp.Body.Close()
-		body, _ := io.ReadAll(resp.Body)
-		c.Data(resp.StatusCode, "application/json", body)
-	})
+	router.POST("/api/v1/models/delete", proxyPost(aiEngineURL, "/api/v1/models/delete"))
 	router.POST("/api/v1/models/cloud/key", proxyPost(aiEngineURL, "/api/v1/models/cloud/key"))
 	router.GET("/api/v1/models/cloud/keys", proxyGet(aiEngineURL, "/api/v1/models/cloud/keys"))
 	router.DELETE("/api/v1/models/cloud/key/:provider", func(c *gin.Context) {

@@ -61,4 +61,4 @@ helm-charts/tagent/charts/
 *.db
 *.sqlite
 
-*doc/
+#*doc/

@@ -52,6 +52,13 @@ spec:
       labels:
         {{- include "tagent.selectorLabels" (dict "Release" .Release "component" "ollama") | nindent 8 }}
     spec:
+      # Priority: allow Ollama to be evicted if the cluster is tight on resources.
+      # It will be rescheduled when resources free up.
+      priorityClassName: ""
+      tolerations:
+        - key: "nvidia.com/gpu"
+          operator: "Exists"
+          effect: "NoSchedule"
       containers:
         - name: ollama
           image: "{{ .Values.ollama.image.repository }}:{{ .Values.ollama.image.tag }}"
@@ -62,7 +69,11 @@ spec:
           env:
             - name: OLLAMA_HOST
               value: "0.0.0.0"
-          # Pull the default chat + embedding model on first start.
+            # Keep Ollama lightweight on startup — models are pulled via the UI
+            - name: OLLAMA_KEEP_ALIVE
+              value: "5m"
+          # Auto-pull the default small model + embedding model on first start.
+          # Users can switch to bigger models from the AI Models UI.
           lifecycle:
             postStart:
               exec:
@@ -70,11 +81,38 @@ spec:
                   - sh
                   - -c
                   - |
-                    sleep 5
+                    sleep 10
                     ollama pull {{ .Values.ollama.model }} || true
                     ollama pull {{ .Values.ollama.embeddingModel }} || true
+          # Readiness: only mark ready when Ollama HTTP API responds
+          readinessProbe:
+            httpGet:
+              path: /api/tags
+              port: 11434
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          # Liveness: restart if Ollama becomes unresponsive
+          livenessProbe:
+            httpGet:
+              path: /api/tags
+              port: 11434
+            initialDelaySeconds: 15
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          # Minimal resources — Ollama runs fine with low requests.
+          # It uses more RAM only AFTER a model is loaded (via the UI).
+          # This ensures the pod always schedules on any cluster.
           resources:
-            {{- toYaml .Values.ollama.resources | nindent 12 }}
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            # No limits — Ollama dynamically uses resources based on the model
+            # loaded. Small models use ~1GB, large models use 40GB+.
+            # Kubernetes will schedule the pod easily with minimal requests,
+            # and Ollama will use available resources when running inference.
           volumeMounts:
             - name: data
               mountPath: /root/.ollama
