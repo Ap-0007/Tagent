@@ -1,6 +1,8 @@
 {{- if .Values.metricsServer.enabled }}
+{{- if not (lookup "apps/v1" "Deployment" "kube-system" "metrics-server") }}
 # Metrics Server — provides real CPU/Memory usage data for pods and nodes.
-# Required for Workload Explorer, Dashboard KPIs, and AI analysis to show real resource metrics.
+# Only installed if metrics-server doesn't already exist in the cluster.
+# If you already have metrics-server, set metricsServer.enabled=false or leave it — this will be skipped.
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -161,4 +163,5 @@ spec:
   insecureSkipTLSVerify: true
   groupPriorityMinimum: 100
   versionPriority: 100
+{{- end }}
 {{- end }}
