@@ -14,16 +14,19 @@ import (
 
 // Incident represents a detected problem in the cluster.
 type Incident struct {
-	ID        string    `json:"id"`
-	Title     string    `json:"title"`
-	Severity  string    `json:"severity"`
-	Status    string    `json:"status"`
-	Service   string    `json:"service"`
-	Namespace string    `json:"namespace"`
-	Node      string    `json:"node"`
-	RootCause string    `json:"root_cause"`
-	Evidence  []string  `json:"evidence"`
-	DetectedAt time.Time `json:"detected_at"`
+	ID          string   `json:"id"`
+	Title       string   `json:"title"`
+	Severity    string   `json:"severity"`
+	Status      string   `json:"status"`
+	Service     string   `json:"service"`
+	Namespace   string   `json:"namespace"`
+	Node        string   `json:"node"`
+	RootCause   string   `json:"rootCause"`
+	Confidence  int      `json:"confidence"`
+	BlastRadius []string `json:"blastRadius"`
+	Evidence    []string `json:"evidence"`
+	StartedAt   string   `json:"startedAt"`
+	DetectedAt  time.Time `json:"-"`
 }
 
 // Detector watches the cluster and detects incidents.
@@ -108,14 +111,16 @@ func (d *Detector) detectCrashLoopBackOff(ctx context.Context) {
 				}
 
 				d.addIncident(Incident{
-					Title:     fmt.Sprintf("%s CrashLoopBackOff (%d restarts)", pod.Name, cs.RestartCount),
-					Severity:  severity,
-					Status:    "active",
-					Service:   podServiceName(pod),
-					Namespace: pod.Namespace,
-					Node:      pod.Spec.NodeName,
-					RootCause: fmt.Sprintf("Container %s is crash-looping. Last exit code: %d.", cs.Name, lastExitCode(cs)),
-					Evidence:  evidence,
+					Title:       fmt.Sprintf("%s CrashLoopBackOff (%d restarts)", pod.Name, cs.RestartCount),
+					Severity:    severity,
+					Status:      "active",
+					Service:     podServiceName(pod),
+					Namespace:   pod.Namespace,
+					Node:        pod.Spec.NodeName,
+					RootCause:   fmt.Sprintf("Container %s is crash-looping. Last exit code: %d.", cs.Name, lastExitCode(cs)),
+					Confidence:  92,
+					BlastRadius: []string{pod.Namespace + "/" + podServiceName(pod)},
+					Evidence:    evidence,
 				})
 			}
 		}
@@ -223,6 +228,13 @@ func (d *Detector) addIncident(inc Incident) {
 	d.counter++
 	inc.ID = fmt.Sprintf("INC-%04d", d.counter)
 	inc.DetectedAt = time.Now().UTC()
+	inc.StartedAt = inc.DetectedAt.Format(time.RFC3339)
+	if inc.Confidence == 0 {
+		inc.Confidence = 85
+	}
+	if inc.BlastRadius == nil {
+		inc.BlastRadius = []string{}
+	}
 	d.incidents = append(d.incidents, inc)
 	log.Printf("[detector] NEW INCIDENT: %s — %s (%s)", inc.ID, inc.Title, inc.Severity)
 }

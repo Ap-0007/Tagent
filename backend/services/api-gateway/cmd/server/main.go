@@ -183,8 +183,29 @@ func main() {
 
 	// ===== Discovery Service =====
 	router.GET("/api/v1/clusters", proxyGet(discoveryURL, "/summary"))
+	router.GET("/api/v1/cluster-info", proxyGet(discoveryURL, "/cluster-info"))
 	router.GET("/api/v1/resources", proxyGet(discoveryURL, "/resources"))
 	router.GET("/api/v1/nodes", proxyGet(discoveryURL, "/nodes"))
+	router.GET("/api/v1/nodes/:name", func(c *gin.Context) {
+		resp, err := http.Get(discoveryURL + "/nodes/" + c.Param("name"))
+		if err != nil {
+			c.JSON(502, gin.H{"error": "upstream unreachable"})
+			return
+		}
+		defer resp.Body.Close()
+		body, _ := io.ReadAll(resp.Body)
+		c.Data(resp.StatusCode, "application/json", body)
+	})
+	router.GET("/api/v1/nodes/:name/cloud", func(c *gin.Context) {
+		resp, err := http.Get(discoveryURL + "/nodes/" + c.Param("name") + "/cloud")
+		if err != nil {
+			c.JSON(502, gin.H{"error": "upstream unreachable"})
+			return
+		}
+		defer resp.Body.Close()
+		body, _ := io.ReadAll(resp.Body)
+		c.Data(resp.StatusCode, "application/json", body)
+	})
 	router.GET("/api/v1/pods", proxyGetWithQuery(discoveryURL, "/pods"))
 	router.GET("/api/v1/deployments", proxyGet(discoveryURL, "/deployments"))
 	router.GET("/api/v1/services", proxyGet(discoveryURL, "/services"))
@@ -300,6 +321,20 @@ func main() {
 	router.GET("/api/v1/metrics/memory", proxyGet(monitoringURL, "/metrics/memory"))
 	router.GET("/api/v1/metrics/network", proxyGet(monitoringURL, "/metrics/network"))
 	router.GET("/api/v1/metrics/traffic", proxyGet(monitoringURL, "/metrics/traffic"))
+	router.GET("/api/v1/metrics/node/:name", func(c *gin.Context) {
+		url := monitoringURL + "/metrics/node/" + c.Param("name")
+		if c.Request.URL.RawQuery != "" {
+			url += "?" + c.Request.URL.RawQuery
+		}
+		resp, err := http.Get(url)
+		if err != nil {
+			c.JSON(502, gin.H{"error": "upstream unreachable"})
+			return
+		}
+		defer resp.Body.Close()
+		body, _ := io.ReadAll(resp.Body)
+		c.Data(resp.StatusCode, "application/json", body)
+	})
 	router.POST("/api/v1/logs/search", proxyPost(monitoringURL, "/logs/search"))
 	router.GET("/api/v1/traces", proxyGetWithQuery(monitoringURL, "/traces"))
 	router.GET("/api/v1/traces/services", proxyGet(monitoringURL, "/traces/services"))

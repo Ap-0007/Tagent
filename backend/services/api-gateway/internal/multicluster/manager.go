@@ -13,6 +13,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"os"
 	"sync"
 	"time"
 )
@@ -125,18 +126,29 @@ func (m *Manager) ensureLocalCluster() {
 	defer m.mu.Unlock()
 
 	if _, exists := m.clusters["local"]; !exists {
+		// Use K8s service DNS names (works inside the cluster)
+		discoveryURL := envOrDefault("DISCOVERY_URL", "http://tagent-discovery:8081")
+		monitoringURL := envOrDefault("MONITORING_URL", "http://tagent-monitoring:8082")
+
 		m.clusters["local"] = &ClusterInfo{
-			ID:           "local",
-			Name:         "Local Cluster",
-			Environment:  "production",
-			Region:       "local",
-			Provider:     "kubernetes",
-			Status:       "connected",
-			DiscoveryURL: "http://localhost:8081",
-			MonitoringURL: "http://localhost:8082",
-			CreatedAt:    time.Now().UTC().Format(time.RFC3339),
+			ID:            "local",
+			Name:          "Local Cluster",
+			Environment:   "production",
+			Region:        "local",
+			Provider:      "kubernetes",
+			Status:        "connected",
+			DiscoveryURL:  discoveryURL,
+			MonitoringURL: monitoringURL,
+			CreatedAt:     time.Now().UTC().Format(time.RFC3339),
 		}
 	}
+}
+
+func envOrDefault(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
 }
 
 // RegisterCluster adds a new cluster to the fleet

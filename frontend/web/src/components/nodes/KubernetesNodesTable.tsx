@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { getNodes, getMetricsSummary, type NodeInfo, type MetricsSummary } from "@/lib/api";
 import { Dropdown } from "@/components/workload/Dropdown";
 
@@ -52,8 +53,8 @@ function mapNodeInfoToRow(node: NodeInfo, nodeMetric: { cpu_percent: number; mem
     const podCapacity = parseInt(node.pod_capacity) || 0;
     const podPercent = podCapacity > 0 ? Math.round((node.pod_count / podCapacity) * 100) : 0;
 
-    const cpuColor = cpuPercent >= 80 ? "#f85149" : cpuPercent >= 60 ? "#f0883e" : "#3fb950";
-    const memColor = memPercent >= 80 ? "#f85149" : memPercent >= 60 ? "#f0883e" : "#3fb950";
+    const cpuColor = cpuPercent >= 80 ? "#f85149" : cpuPercent >= 60 ? "#f0883e" : "#22d3ee";
+    const memColor = memPercent >= 80 ? "#f85149" : memPercent >= 60 ? "#f0883e" : "#a371f7";
 
     // Health score derived from CPU + memory + status
     const healthScore = isReady ? Math.max(0, Math.round(100 - (cpuPercent * 0.3 + memPercent * 0.3))) : 40;
@@ -247,21 +248,21 @@ function Th({ children }: { children: React.ReactNode }) {
 
 function NodeTableRow({ node, isLast }: { node: NodeRow; isLast: boolean }) {
     return (
-        <tr className={`hover:bg-white/[0.025] transition-colors ${!isLast ? "border-b border-[#21262d]" : ""}`}>
+        <tr className={`hover:bg-white/[0.025] transition-colors cursor-pointer ${!isLast ? "border-b border-[#21262d]" : ""}`}>
             {/* Node */}
             <td className="px-3 py-3">
-                <div className="flex items-center gap-2.5">
+                <Link href={`/nodes/${encodeURIComponent(node.name)}`} className="flex items-center gap-2.5 group">
                     <span className="w-2 h-2 rounded-full shrink-0" style={{ background: node.statusDot, boxShadow: `0 0 4px ${node.statusDot}` }} />
                     <div className="min-w-0">
                         <div className="flex items-center gap-1.5">
-                            <p className="text-[12px] font-mono font-semibold text-[#58a6ff]">{node.name}</p>
+                            <p className="text-[12px] font-mono font-semibold text-[#58a6ff] group-hover:text-[#79c0ff] group-hover:underline transition-colors">{node.name}</p>
                             <span className="w-3.5 h-3.5 rounded-full flex items-center justify-center text-[8px] font-bold" style={{ background: node.statusBadgeColor, color: "#0a0e15" }}>
                                 {node.statusBadge}
                             </span>
                         </div>
                         <p className="text-[10px] text-[#8b949e] mt-0.5">{node.role} Node</p>
                     </div>
-                </div>
+                </Link>
             </td>
             {/* Role & Info */}
             <td className="px-3 py-3">

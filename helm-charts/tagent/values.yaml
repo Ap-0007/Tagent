@@ -74,6 +74,11 @@ web:
     requests: { cpu: 50m, memory: 128Mi }
     limits: { cpu: 500m, memory: 512Mi }
 
+# ===== METRICS SERVER (auto-installs for real CPU/Memory data) =====
+
+metricsServer:
+  enabled: true
+
 # ===== LOCAL LLM (no cloud APIs) =====
 
 ollama:

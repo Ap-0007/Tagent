@@ -35,6 +35,10 @@ spec:
           value: {{ .Values.ollama.model | quote }}
         - name: OLLAMA_EMBEDDING_MODEL
           value: {{ .Values.ollama.embeddingModel | quote }}
+        - name: DISCOVERY_URL
+          value: "http://{{ .Release.Name }}-discovery:8081"
+        - name: MONITORING_URL
+          value: "http://{{ .Release.Name }}-monitoring:8082"
         - name: DATABASE_URL
           valueFrom:
             secretKeyRef:

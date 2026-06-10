@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { Search, Bell, Radio, ChevronDown, Clock } from "lucide-react";
-import { getAdminInfo } from "@/lib/api";
+import { getAdminInfo, getClusterInfo } from "@/lib/api";
 
 const pageTitles: Record<string, { title: string; description: string; aiBadge?: boolean }> = {
     "/": { title: "Dashboard", description: "AI-powered Kubernetes incident intelligence, operational insights, and autonomous remediation." },
@@ -44,13 +44,31 @@ export function TopBar() {
 
     // Fetch admin info for cluster/environment display
     useEffect(() => {
-        getAdminInfo()
+        // Auto-detect cluster info from K8s (always works, no setup needed)
+        getClusterInfo()
             .then(info => {
-                setClusterName(info.cluster_name || "—");
-                setEnvironment(info.role || "—");
-                if (info.name) setAdminInitial(info.name.charAt(0).toUpperCase());
+                if (info.cluster_name) setClusterName(info.cluster_name);
+                if (info.environment) setEnvironment(info.environment);
             })
             .catch(() => { });
+
+        // Try admin info for avatar name
+        getAdminInfo()
+            .then(info => {
+                if (info.name) setAdminInitial(info.name.charAt(0).toUpperCase());
+                // Override with admin-configured values if set
+                if (info.cluster_name) setClusterName(info.cluster_name);
+                if (info.role) setEnvironment(info.role);
+            })
+            .catch(() => {
+                const data = localStorage.getItem("tagent_admin");
+                if (data) {
+                    try {
+                        const parsed = JSON.parse(data);
+                        if (parsed.name) setAdminInitial(parsed.name.charAt(0).toUpperCase());
+                    } catch { /* ignore */ }
+                }
+            });
 
         // Fetch notifications from real events/incidents
         Promise.all([

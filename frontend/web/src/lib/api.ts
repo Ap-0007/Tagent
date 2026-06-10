@@ -291,6 +291,19 @@ export async function getClusterSummary(): Promise<ClusterSummary> {
     return request<ClusterSummary>("/api/v1/clusters");
 }
 
+export interface ClusterInfo {
+    cluster_name: string;
+    environment: string;
+    nodes: number;
+    pods: number;
+    provider: string;
+    region: string;
+}
+
+export async function getClusterInfo(): Promise<ClusterInfo> {
+    return request<ClusterInfo>("/api/v1/cluster-info");
+}
+
 export async function getPods(namespace?: string): Promise<PodInfo[]> {
     const path = namespace ? `/api/v1/pods?namespace=${namespace}` : "/api/v1/pods";
     return request<PodInfo[]>(path);
@@ -298,6 +311,197 @@ export async function getPods(namespace?: string): Promise<PodInfo[]> {
 
 export async function getNodes(): Promise<NodeInfo[]> {
     return request<NodeInfo[]>("/api/v1/nodes");
+}
+
+// ===== Node Detail =====
+
+export interface NodeCondition {
+    type: string;
+    status: string;
+    reason: string;
+    message: string;
+}
+
+export interface NodePodDetail {
+    name: string;
+    namespace: string;
+    status: string;
+    cpu: string;
+    memory: string;
+    restarts: number;
+    age: string;
+    containers: number;
+}
+
+export interface NodeTaint {
+    key: string;
+    value: string;
+    effect: string;
+}
+
+export interface NodeEvent {
+    type: string;
+    reason: string;
+    message: string;
+    count: number;
+    first: string;
+    last: string;
+    component: string;
+}
+
+export interface NodeDetail {
+    name: string;
+    status: string;
+    role: string;
+    kubernetes_version: string;
+    container_runtime: string;
+    os: string;
+    os_type: string;
+    architecture: string;
+    kernel: string;
+    internal_ip: string;
+    external_ip: string;
+    pod_cidr: string;
+    provider_id: string;
+    instance_type: string;
+    availability_zone: string;
+    region: string;
+    created_at: string;
+    age: string;
+    cpu_capacity: string;
+    memory_capacity: string;
+    pod_capacity: string;
+    ephemeral_storage: string;
+    cpu_used: string;
+    cpu_percent: number;
+    memory_used: string;
+    memory_percent: number;
+    pod_count: number;
+    pods: NodePodDetail[];
+    conditions: NodeCondition[];
+    labels: Record<string, string>;
+    annotations: Record<string, string>;
+    taints: NodeTaint[];
+    images: string[];
+    image_count: number;
+    events: NodeEvent[];
+}
+
+export interface CloudSecurityGroup {
+    id: string;
+    name: string;
+}
+
+export interface CloudVolume {
+    id: string;
+    device: string;
+    size_gb: number;
+    type: string;
+    encrypted: boolean;
+    state: string;
+    iops: number;
+}
+
+export interface CloudNetworkInterface {
+    id: string;
+    private_ip: string;
+    public_ip: string;
+    subnet_id: string;
+    vpc_id: string;
+    mac_address: string;
+    status: string;
+}
+
+export interface CloudStatusChecks {
+    system: string;
+    instance: string;
+}
+
+export interface EC2InstanceDetail {
+    instance_id: string;
+    instance_type: string;
+    ami_id: string;
+    ami_name: string;
+    ami_location: string;
+    platform: string;
+    launch_time: string;
+    state: string;
+    lifecycle: string;
+    vpc_id: string;
+    vpc_name: string;
+    subnet_id: string;
+    availability_zone: string;
+    az_id: string;
+    public_ip: string;
+    private_ip: string;
+    public_dns: string;
+    private_dns: string;
+    security_groups: CloudSecurityGroup[];
+    key_pair: string;
+    iam_role: string;
+    monitoring: string;
+    ebs_optimized: boolean;
+    root_device_name: string;
+    root_device_type: string;
+    root_volume_size: number;
+    volumes: CloudVolume[];
+    network_interfaces: CloudNetworkInterface[];
+    tags: Record<string, string>;
+    status_checks: CloudStatusChecks;
+    vcpus: number;
+    architecture: string;
+    hypervisor: string;
+    virtualization_type: string;
+    tenancy: string;
+    reservation: string;
+    owner: string;
+    region: string;
+    boot_mode: string;
+    termination_protection: boolean;
+    stop_protection: boolean;
+    credit_specification: string;
+    usage_operation: string;
+}
+
+export interface NodeCloudResponse {
+    available: boolean;
+    message?: string;
+    instance_id?: string;
+    instance?: EC2InstanceDetail;
+}
+
+export interface MetricsDataPoint {
+    timestamp: string;
+    value: number;
+}
+
+export interface NodeMetricsHistory {
+    node: string;
+    range: string;
+    cpu_utilization: MetricsDataPoint[];
+    memory_utilization: MetricsDataPoint[];
+    network_in_bytes: MetricsDataPoint[];
+    network_out_bytes: MetricsDataPoint[];
+    network_packets_in: MetricsDataPoint[];
+    network_packets_out: MetricsDataPoint[];
+    disk_read_iops: MetricsDataPoint[];
+    disk_write_iops: MetricsDataPoint[];
+    disk_usage_percent: MetricsDataPoint[];
+    metadata_no_token: MetricsDataPoint[];
+    cpu_credit_usage: MetricsDataPoint[];
+    cpu_credit_balance: MetricsDataPoint[];
+}
+
+export async function getNodeDetail(name: string): Promise<NodeDetail> {
+    return request<NodeDetail>(`/api/v1/nodes/${encodeURIComponent(name)}`);
+}
+
+export async function getNodeCloudInfo(name: string): Promise<NodeCloudResponse> {
+    return request<NodeCloudResponse>(`/api/v1/nodes/${encodeURIComponent(name)}/cloud`);
+}
+
+export async function getNodeMetrics(name: string, range: string = "1h"): Promise<NodeMetricsHistory> {
+    return request<NodeMetricsHistory>(`/api/v1/metrics/node/${encodeURIComponent(name)}?range=${range}`);
 }
 
 export async function getDeployments(): Promise<DeploymentInfo[]> {

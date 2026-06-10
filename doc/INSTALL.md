@@ -195,3 +195,9 @@ kubectl exec -n tagent deploy/tagent-ollama -- ollama list
 # Check AI Engine can reach Ollama
 kubectl exec -n tagent deploy/tagent-ai-engine -- curl -s http://tagent-ollama:11434/api/tags
 ```
+
+```bash
+git pull origin main
+helm upgrade tagent ./helm-charts/tagent -n tagent
+kubectl rollout restart deployment/tagent-ai-engine -n tagent
+```
