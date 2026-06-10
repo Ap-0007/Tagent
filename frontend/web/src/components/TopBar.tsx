@@ -44,13 +44,31 @@ export function TopBar() {
 
     // Fetch admin info for cluster/environment display
     useEffect(() => {
+        // Try admin info first
         getAdminInfo()
             .then(info => {
-                setClusterName(info.cluster_name || "—");
-                setEnvironment(info.role || "—");
+                if (info.cluster_name) setClusterName(info.cluster_name);
+                if (info.role) setEnvironment(info.role);
                 if (info.name) setAdminInitial(info.name.charAt(0).toUpperCase());
             })
-            .catch(() => { });
+            .catch(() => {
+                // Fallback: use localStorage admin data
+                const data = localStorage.getItem("tagent_admin");
+                if (data) {
+                    try {
+                        const parsed = JSON.parse(data);
+                        if (parsed.cluster_name) setClusterName(parsed.cluster_name);
+                        if (parsed.role) setEnvironment(parsed.role);
+                        if (parsed.name) setAdminInitial(parsed.name.charAt(0).toUpperCase());
+                    } catch { /* ignore */ }
+                }
+            });
+
+        // Set defaults if still empty after 2s
+        setTimeout(() => {
+            setClusterName(prev => prev === "—" ? "default" : prev);
+            setEnvironment(prev => prev === "—" ? "production" : prev);
+        }, 2000);
 
         // Fetch notifications from real events/incidents
         Promise.all([
