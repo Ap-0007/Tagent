@@ -279,21 +279,27 @@ docker compose exec ollama ollama pull llama3.1:8b
 
 | Document | Description |
 |----------|-------------|
+| [Installation Guide](doc/INSTALL.md) | Step-by-step install (Helm, Kind, EKS, GKE, AKS, local) |
+| [Contributing Guide](CONTRIBUTING.md) | Setup, development, PR process, code style |
+| [Developer Guide](doc/DEVELOPER_GUIDE.md) | Deep-dive into codebase, adding features, testing |
 | [Architecture](doc/ARCHITECTURE.md) | System design, data flow, service responsibilities |
 | [API Reference](doc/API_REFERENCE.md) | All 80+ API endpoints |
-| [Installation Guide](doc/INSTALL.md) | Step-by-step install (Helm, EKS, local) |
 | [Development Roadmap](doc/DEVELOPMENT_ROADMAP.md) | Full build plan from code to market |
 | [AI Requirements](doc/AI_REQUIREMENTS.md) | Local models constraint (hard requirement) |
 | [Advanced Features](doc/FEATURES_ADVANCED.md) | Auto-fix, escalation, video briefing spec |
 | [Plugin SDK](doc/PLUGIN_SDK.md) | Build custom detectors |
 | [Vision](doc/VISION.md) | Original project vision and philosophy |
 | [CLI README](cli/README.md) | CLI installation and commands |
+| [Security Policy](SECURITY.md) | Vulnerability reporting, security design |
+| [Code of Conduct](CODE_OF_CONDUCT.md) | Community behavior standards |
 
 ---
 
 ## Contributing
 
-We welcome contributions! This is an open-source project.
+We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for the full guide.
+
+**Quick start for new contributors:**
 
 ```bash
 git clone https://github.com/Tagent-dev/Tagent.git
