@@ -1,1 +1,1 @@
-...[replaced with valid content]
+...[valid markdown content]
